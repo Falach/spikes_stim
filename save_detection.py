@@ -12,10 +12,10 @@ import joblib
 # from detector_with_conj import detect
 
 sr = 1000
-edf_path = 'C:\\Maya\\p%s\\P%s_fixed.edf'
-stim_path = 'C:\\Maya\\p%s\\p%s_stim_timing.csv'
-model_lgbm = joblib.load('results/LGBM_AH_bi_maya.pkl')
-model_rf = joblib.load('results/RF_AH_bi_maya.pkl')
+edf_path = 'D:\\Maya\\p%s\\P%s_fixed.edf'
+stim_path = 'D:\\Maya\\p%s\\p%s_stim_timing.csv'
+model_lgbm = joblib.load('models\LGBM_V1.pkl')
+model_rf = joblib.load('models\RF_V1.pkl')
 
 
 def bandpower_from_psd_ndarray(psd, freqs, bands, relative=True):
@@ -135,11 +135,11 @@ def calc_features(epochs, subj):
     ############################
     roll1 = feat.rolling(window=1, center=True, min_periods=1, win_type='triang').mean()
     roll1[roll1.columns] = robust_scale(roll1, quantile_range=(5, 95))
-    roll1 = roll1.iloc[:, 2:].add_suffix('_cmin_norm')
+    roll1 = roll1.iloc[:, 1:].add_suffix('_cmin_norm')
 
     roll3 = feat.rolling(window=3, center=True, min_periods=1, win_type='triang').mean()
     roll3[roll3.columns] = robust_scale(roll3, quantile_range=(5, 95))
-    roll3 = roll3.iloc[:, 2:].add_suffix('_pmin_norm')
+    roll3 = roll3.iloc[:, 1:].add_suffix('_pmin_norm')
 
     # Add to current set of features
     feat = feat.join(roll1).join(roll3)
@@ -203,7 +203,7 @@ def format_stim(subj, n_times):
 
     return stim_epochs
 
-
+# get the blocks start and end time
 def get_stim_starts(subj):
     stim = np.array(pd.read_csv(stim_path % (subj, subj), header=None).iloc[0, :])
     stim_sessions = []
@@ -216,10 +216,13 @@ def get_stim_starts(subj):
         # Check if the next stim is in more than 5 minutes
         if i + 1 < stim.size and stim[i + 1] - stim[i] > 5 * 60 * 1000:
             end = stim[i] / 1000
-            stim_sessions.append((start, end))
+            # check that it isn't a single stim (like 487, 9595 sec)
+            if start != end:
+                stim_sessions.append((start, end))
     return stim_sessions
 
-def fill_row(raw, rates):
+def fill_row(raw, rates, is_stim=False):
+    rates['is_stim'].append(int(is_stim))
     spikes = detect_spikes(raw)
     rates['n_spikes'].append(spikes.sum())
     rates['duration_sec'].append(raw.n_times / sr)
@@ -237,27 +240,29 @@ def fill_row(raw, rates):
 def detect_subj_chan(subj, channels):
     rates = {'n_spikes': [], 'duration_sec': [], 'rate': [], 'duration_20%': [], 'n_1_20%': [], 'n_2_20%': [],
              'n_3_20%': [], 'n_4_20%': [], 'n_5_20%': [], 'rate_1_20%': [], 'rate_2_20%': [], 'rate_3_20%': [],
-             'rate_4_20%': [], 'rate_5_20%': []}
-    spikes_between_stims = []
+             'rate_4_20%': [], 'rate_5_20%': [], 'is_stim': []}
     stim_sections_sec = get_stim_starts(subj)
     stim_start_sec = stim_sections_sec[0][0]
     stim_end_sec = stim_sections_sec[-1][1]
     raw = mne.io.read_raw_edf(edf_path % (subj, subj)).pick_channels(channels)
 
-    # get the 15 minutes starting 20 min before first stim spikes rate (or until the first stim if shorter)
-    if stim_start_sec - 60 * 20 < 0:
+    # get the 5 minutes before first stim spikes rate (or until the first stim if shorter)
+    if stim_start_sec - 60 * 5 < 0:
         baseline_raw = raw.copy().crop(tmin=0, tmax=stim_start_sec)
     else:
-        baseline_raw = raw.copy().crop(tmin=stim_start_sec - 60 * 20, tmax=stim_start_sec - 60 * 5)
+        baseline_raw = raw.copy().crop(tmin=stim_start_sec - 60 * 5, tmax=stim_start_sec)
     rates = fill_row(baseline_raw, rates)
 
+    # fill sections of stim and the stops between
     for i, (start, end) in enumerate(stim_sections_sec):
+        # fill the current stim
+        rates = fill_row(raw.copy().crop(tmin=start, tmax=end), rates, is_stim=True)
         if i + 1 < len(stim_sections_sec):
             # the stop is the time between the end of the curr section and the start of the next
             rates = fill_row(raw.copy().crop(tmin=end, tmax=stim_sections_sec[i + 1][0]), rates)
         else:
-            # 15 min after the last stim
-            rates = fill_row(raw.copy().crop(tmin=end, tmax=end + 60 * 15), rates)
+            # 5 min after the last stim
+            rates = fill_row(raw.copy().crop(tmin=end, tmax=end + 60 * 5), rates)
 
     results_df = pd.DataFrame(rates)
     results_df.to_csv(f'results/{subj}_{channels[0]}_rates.csv')
@@ -265,53 +270,28 @@ def detect_subj_chan(subj, channels):
     return rates
 
 
-def plot_subj_chan(rates, channels):
-    # draw the baseline before stim and after all stims
-    plt.axhline(y=rates['rate'][0], color='b', linestyle='dashed', label='Before')
-    plt.axhline(y=rates['rate'][len(rates['rate']) - 1], color='r', linestyle='dashed', label='After')
-    for_avg = []
-    # draw each stop as 5 rates
-    for i in range(0, len(rates['rate']) - 2):
-        y_axis = [rates['rate_5_20%'][i],  # the previous stop baseline
-                  rates['rate_1_20%'][i + 1],
-                  rates['rate_2_20%'][i + 1],
-                  rates['rate_3_20%'][i + 1],
-                  rates['rate_4_20%'][i + 1],
-                  rates['rate_5_20%'][i + 1]]
-        for_avg.append(y_axis)
-        # plt.plot(list(range(0, 6)), y_axis, 'o-', label=str(i + 1))
+# done = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505']
+# problem = ['490'] # second stim is weird, also have c3 and c4
+# # subjects = ['485', '486', '487', '488', '489', '490', '496', '497', '498', '499', '505', '510', '515', '538', '541', '544', '545']
+# subjects = ['510-1', '510-7', '515', '538', '541', '544', '545']
+# for subj in subjects:
+#     print(f'subj: {subj}')
+#     all_channels = mne.io.read_raw_edf(edf_path % (subj, subj)).ch_names
+#     chans_bi = []
+#
+#     # get the channels for bipolar reference
+#     for i, chan in enumerate(all_channels):
+#         if i + 1 < len(all_channels):
+#             next_chan = all_channels[i + 1]
+#             if next_chan[:-1] == chan[:-1]:
+#                 chans_bi.append([chan, next_chan])
+#
+#     # run on each channel and detect the spikes between stims
+#     for chans in chans_bi:
+#         rates = detect_subj_chan(subj, chans)
+#         # plot_subj_chan(rates, chans)
+#     print(1)
 
-    # plot avg trend
-    avg_df = pd.DataFrame(for_avg, columns=['0', '1', '2', '3', '4', '5'])
-    means = [avg_df[str(i)].mean() for i in range(0, 6)]
-    stds = [avg_df[str(i)].std() for i in range(0, 6)]
-    plt.errorbar(list(range(0, 6)), means, yerr=stds, capsize=5, fmt='-o', label='avg', color='black')
-    plt.legend()
-    plt.title(f'{subj} - {channels[0]}')
-    plt.xlabel('Time point')
-    plt.ylabel('Spikes per minute')
-    plt.savefig(f'results/{subj}_{channels[0]}.png')
-    plt.clf()
-
-
-# There are also 3 subj without stim timing
-# missing_stim = ['490', '499', '510', '520']
-subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '505', '515', '538', '541', '544', '545']
-for subj in subjects:
-    all_channels = mne.io.read_raw_edf(edf_path % (subj, subj)).ch_names
-    chans_bi = []
-
-    # get the channels for bipolar reference
-    for i, chan in enumerate(all_channels):
-        if i + 1 < len(all_channels):
-            next_chan = all_channels[i + 1]
-            if next_chan[:-1] == chan[:-1]:
-                chans_bi.append([chan, next_chan])
-
-    # run on each channel and detect the spikes between stims
-    for chans in chans_bi:
-        rates = detect_subj_chan(subj, chans)
-        plot_subj_chan(rates, chans)
-    print(1)
-    # chans_bi = [(f'{channels[0][:-1]}{int(channels[0][-1]) + 1}')  if]
-    # channels = ['ROF6', 'ROF7']
+subj = '498'
+detect_subj_chan(subj, ['ROF3', 'ROF4'])
+remove_c3 = ['496', '489', '486', '488']

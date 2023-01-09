@@ -100,7 +100,7 @@ def rotem_write_edf(mne_raw, fname, picks=None, tmin=0, tmax=None, overwrite=Tru
     return True
 
 
-subj = '520'
+subj = '488'
 save_night = True
 save_tag = True
 subj_stim = {'485': 9595, '486': 4191, '487': 6314, '488': 9389, '489': 8743, '490': 7528, '496': 3252, '497': 5530,
@@ -124,13 +124,15 @@ for curr_file in subj_files_list:
         ch_name = ''
         for x in ch_name_array:
             ch_name += chr(x[0])
-        # sfreq = int(np.array(f.get('hdr/Fs'))[0][0])
-        sfreq = np.array(f['LocalHeader/samplingRate'])[0][0]
-        info = mne.create_info(ch_names=[ch_name], sfreq=sfreq)
-        if mne_raw is None:
-            mne_raw = mne.io.RawArray(data, info)
-        else:
-            mne_raw.add_channels([mne.io.RawArray(data, info)])
+        # don't include scalp channels
+        if ch_name[0] in ['R', 'L']:
+            # sfreq = int(np.array(f.get('hdr/Fs'))[0][0])
+            sfreq = np.array(f['LocalHeader/samplingRate'])[0][0]
+            info = mne.create_info(ch_names=[ch_name], sfreq=sfreq)
+            if mne_raw is None:
+                mne_raw = mne.io.RawArray(data, info)
+            else:
+                mne_raw.add_channels([mne.io.RawArray(data, info)])
     except Exception as e:
         pass
 
