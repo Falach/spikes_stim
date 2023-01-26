@@ -9,11 +9,11 @@ from pathlib import Path, PurePath
 from matplotlib import pyplot as plt
 from sklearn.preprocessing import robust_scale
 import joblib
+from utils import sr, remove_stim, get_stim_starts, edf_path, stim_path, get_clean_channels
+from pyprep.prep_pipeline import PrepPipeline
+import pyprep
 # from detector_with_conj import detect
 
-sr = 1000
-edf_path = 'D:\\Maya\\p%s\\P%s_fixed.edf'
-stim_path = 'D:\\Maya\\p%s\\p%s_stim_timing.csv'
 model_lgbm = joblib.load('models\LGBM_V1.pkl')
 model_rf = joblib.load('models\RF_V1.pkl')
 
@@ -180,7 +180,9 @@ def detect_spikes(raw, plot=False):
     if plot:
         spikes_onsets = np.where(y == 1)[0] / 4
         raw.set_annotations(mne.Annotations(spikes_onsets, [0.25] * len(spikes_onsets), ['spike'] * len(spikes_onsets)))
-        raw.plot(duration=30)
+        mne.set_bipolar_reference(raw, raw.ch_names[0], raw.ch_names[1], ch_name='bi', drop_refs=False).plot(
+            duration=30, scalings='auto')
+        # raw.plot(duration=30)
     return y
 
 
@@ -203,23 +205,6 @@ def format_stim(subj, n_times):
 
     return stim_epochs
 
-# get the blocks start and end time
-def get_stim_starts(subj):
-    stim = np.array(pd.read_csv(stim_path % (subj, subj), header=None).iloc[0, :])
-    stim_sessions = []
-    start = stim[0] / 1000
-    end = None
-    for (i, x) in enumerate(stim):
-        if end is not None:
-            start = stim[i] / 1000
-            end = None
-        # Check if the next stim is in more than 5 minutes
-        if i + 1 < stim.size and stim[i + 1] - stim[i] > 5 * 60 * 1000:
-            end = stim[i] / 1000
-            # check that it isn't a single stim (like 487, 9595 sec)
-            if start != end:
-                stim_sessions.append((start, end))
-    return stim_sessions
 
 def fill_row(raw, rates, is_stim=False):
     rates['is_stim'].append(int(is_stim))
@@ -245,6 +230,8 @@ def detect_subj_chan(subj, channels):
     stim_start_sec = stim_sections_sec[0][0]
     stim_end_sec = stim_sections_sec[-1][1]
     raw = mne.io.read_raw_edf(edf_path % (subj, subj)).pick_channels(channels)
+    # for cleaning
+    # raw.plot_psd()
 
     # get the 5 minutes before first stim spikes rate (or until the first stim if shorter)
     if stim_start_sec - 60 * 5 < 0:
@@ -255,43 +242,49 @@ def detect_subj_chan(subj, channels):
 
     # fill sections of stim and the stops between
     for i, (start, end) in enumerate(stim_sections_sec):
-        # fill the current stim
-        rates = fill_row(raw.copy().crop(tmin=start, tmax=end), rates, is_stim=True)
-        if i + 1 < len(stim_sections_sec):
-            # the stop is the time between the end of the curr section and the start of the next
-            rates = fill_row(raw.copy().crop(tmin=end, tmax=stim_sections_sec[i + 1][0]), rates)
-        else:
-            # 5 min after the last stim
-            rates = fill_row(raw.copy().crop(tmin=end, tmax=end + 60 * 5), rates)
+            # fill the current stim
+            raw_without_stim = remove_stim(subj, raw.copy().crop(tmin=start, tmax=end), start, end)
+            # rates = fill_row(raw.copy().crop(tmin=start, tmax=end), rates, is_stim=True)
+            rates = fill_row(raw_without_stim, rates, is_stim=True)
+            if i + 1 < len(stim_sections_sec):
+                # the stop is the time between the end of the curr section and the start of the next
+                rates = fill_row(raw.copy().crop(tmin=end, tmax=stim_sections_sec[i + 1][0]), rates)
+            else:
+                # 5 min after the last stim
+                rates = fill_row(raw.copy().crop(tmin=end, tmax=end + 60 * 5), rates)
 
     results_df = pd.DataFrame(rates)
     results_df.to_csv(f'results/{subj}_{channels[0]}_rates.csv')
 
     return rates
 
+done = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '541', '545']
+problem = ['490', '520']  # second stim is weird, also have c3 and c4
+subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '538', '545']
+# subj = '497'
+# detect_subj_chan(subj, ['ROF5', 'ROF6'])
+run_again = [487, 490, 497, 499, 505, 510-7, 520, 538, 545]
 
-# done = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505']
-# problem = ['490'] # second stim is weird, also have c3 and c4
-# # subjects = ['485', '486', '487', '488', '489', '490', '496', '497', '498', '499', '505', '510', '515', '538', '541', '544', '545']
-# subjects = ['510-1', '510-7', '515', '538', '541', '544', '545']
-# for subj in subjects:
-#     print(f'subj: {subj}')
-#     all_channels = mne.io.read_raw_edf(edf_path % (subj, subj)).ch_names
-#     chans_bi = []
-#
-#     # get the channels for bipolar reference
-#     for i, chan in enumerate(all_channels):
-#         if i + 1 < len(all_channels):
-#             next_chan = all_channels[i + 1]
-#             if next_chan[:-1] == chan[:-1]:
-#                 chans_bi.append([chan, next_chan])
-#
-#     # run on each channel and detect the spikes between stims
-#     for chans in chans_bi:
-#         rates = detect_subj_chan(subj, chans)
-#         # plot_subj_chan(rates, chans)
-#     print(1)
+for subj in subjects:
+    print(f'subj: {subj}')
+    subj_raw = mne.io.read_raw_edf(edf_path % (subj, subj))
+    all_channels = get_clean_channels(subj, subj_raw)
+    chans_bi = []
 
-subj = '498'
-detect_subj_chan(subj, ['ROF3', 'ROF4'])
-remove_c3 = ['496', '489', '486', '488']
+    # get the channels for bipolar reference
+    for i, chan in enumerate(all_channels):
+        if i + 1 < len(all_channels):
+            next_chan = all_channels[i + 1]
+            # check that its the same contact
+            if next_chan[:-1] == chan[:-1]:
+                chans_bi.append([chan, next_chan])
+
+    # run on each channel and detect the spikes between stims
+    for chans in chans_bi:
+        rates = detect_subj_chan(subj, chans)
+        # plot_subj_chan(rates, chans)
+    print(1)
+
+# subj = '544'
+# detect_subj_chan(subj, ['LEC1', 'LEC2'])
+# remove_c3 = ['496', '489', '486', '488']

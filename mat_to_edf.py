@@ -100,60 +100,120 @@ def rotem_write_edf(mne_raw, fname, picks=None, tmin=0, tmax=None, overwrite=Tru
     return True
 
 
-subj = '488'
-save_night = True
-save_tag = True
-subj_stim = {'485': 9595, '486': 4191, '487': 6314, '488': 9389, '489': 8743, '490': 7528, '496': 3252, '497': 5530,
-             '498': 4583, '499': 7965, '505': 11320, '510-1': 9736, '510-7': 5629, '515': 490, '520': 1400, '538': 5100,
-             '541': 5160, '544': 2535, '545': 8400}
-first_stim_sec = subj_stim[subj]
-mne_raw = None
-subj_files_list = glob.glob(f'D:\\Maya\\p{subj}\\MACRO\\*')
-for curr_file in subj_files_list:
-    try:
-        f = h5py.File(curr_file, 'r')
-        data = f.get('data')
-        data = np.array(data)
-        # replace nan with previous value
-        df = pd.DataFrame(data)
-        df = df.fillna(method="ffill")
-        data = df.to_numpy().T
-        # ch_names = [x.replace('\'', '') for x in ch_names.iloc[:, 0].tolist()]
-        # ch_names = [x for x in range(10)]
-        ch_name_array = np.array([x for x in f['LocalHeader/origName']], dtype='uint16')
-        ch_name = ''
-        for x in ch_name_array:
-            ch_name += chr(x[0])
-        # don't include scalp channels
-        if ch_name[0] in ['R', 'L']:
-            # sfreq = int(np.array(f.get('hdr/Fs'))[0][0])
-            sfreq = np.array(f['LocalHeader/samplingRate'])[0][0]
+def mat_to_edf():
+    subj = '488'
+    save_night = True
+    save_tag = True
+    subj_stim = {'485': 9595, '486': 4191, '487': 6314, '488': 9389, '489': 8743, '490': 7528, '496': 3252, '497': 5530,
+                 '498': 4583, '499': 7965, '505': 11320, '510-1': 9736, '510-7': 5629, '515': 490, '520': 1400, '538': 5100,
+                 '541': 5160, '544': 2535, '545': 8400}
+    first_stim_sec = subj_stim[subj]
+    mne_raw = None
+    subj_files_list = glob.glob(f'D:\\Maya\\p{subj}\\MACRO\\*')
+    for curr_file in subj_files_list:
+        try:
+            f = h5py.File(curr_file, 'r')
+            data = f.get('data')
+            data = np.array(data)
+            # replace nan with previous value
+            df = pd.DataFrame(data)
+            df = df.fillna(method="ffill")
+            data = df.to_numpy().T
+            # ch_names = [x.replace('\'', '') for x in ch_names.iloc[:, 0].tolist()]
+            # ch_names = [x for x in range(10)]
+            ch_name_array = np.array([x for x in f['LocalHeader/origName']], dtype='uint16')
+            ch_name = ''
+            for x in ch_name_array:
+                ch_name += chr(x[0])
+            # don't include scalp channels
+            if ch_name[0] in ['R', 'L']:
+                # sfreq = int(np.array(f.get('hdr/Fs'))[0][0])
+                sfreq = np.array(f['LocalHeader/samplingRate'])[0][0]
+                info = mne.create_info(ch_names=[ch_name], sfreq=sfreq)
+                if mne_raw is None:
+                    mne_raw = mne.io.RawArray(data, info)
+                else:
+                    mne_raw.add_channels([mne.io.RawArray(data, info)])
+        except Exception as e:
+            pass
+
+    # mne_raw.load_data()
+    mne_raw.reorder_channels(sorted(mne_raw.ch_names))
+    # save night
+    if save_night:
+        annotation = mne.Annotations(onset=[first_stim_sec],
+                                      duration=[0],
+                                      description=['stim_start'])
+        mne_raw.set_annotations(annotation)
+        mne_raw.save(f'D:\\Maya\\p{subj}\\P{subj}_fixed.fif', overwrite=True)
+        rotem_write_edf(mne_raw, f'D:\\Maya\\p{subj}\\P{subj}_fixed.edf')
+
+    # save for tag
+    if save_tag:
+        for_tag = mne_raw.copy().crop(tmin=first_stim_sec - 180, tmax=first_stim_sec + 180)
+    # before_stim = mne_raw.copy().crop(tmin=first_stim_sec - (18 * 60), tmax=first_stim_sec - (15 * 60))
+    # during_stim = mne_raw.copy().crop(tmin=first_stim_sec - 5, tmax=first_stim_sec + 180)
+    # mne_raw.plot()
+        rotem_write_edf(for_tag, f'D:\\Maya\\p{subj}\\P{subj}_for_tag.edf')
+    # rotem_write_edf(during_stim, f'C:\\Maya\\p{subj}\\P{subj}_during_stim.edf')
+
+
+def mat_to_edf_520():
+    import scipy.io as sio
+
+    subj = '520'
+    save_night = True
+    save_tag = True
+    subj_stim = {'485': 9595, '486': 4191, '487': 6314, '488': 9389, '489': 8743, '490': 7528, '496': 3252, '497': 5530,
+                 '498': 4583, '499': 7965, '505': 11320, '510-1': 9736, '510-7': 5629, '515': 490, '520': 1400,
+                 '538': 5100,
+                 '541': 5160, '544': 2535, '545': 8400}
+    ch_name_520 = {'9': 'REC1', '10': 'REC2', '17': 'RMH1', '18': 'RMH2', '25': 'ROF1', '26': 'ROF2',
+                   '57': 'LMH1', '58': 'LMH2'}
+    first_stim_sec = subj_stim[subj]
+    mne_raw = None
+    subj_files_list = glob.glob(f'D:\\Maya\\p{subj}\\MACRO\\*')
+    for curr_file in subj_files_list:
+        try:
+            f = sio.loadmat(curr_file)
+            data = f.get('data')
+            data = np.array(data)
+            # replace nan with previous value
+            df = pd.DataFrame(data)
+            df = df.fillna(method="ffill")
+            data = df.to_numpy()
+            ch_name = ch_name_520[curr_file.replace(f'D:\\Maya\\p{subj}\\MACRO\\CSC', '').replace('.mat', '')]
+            # Hope its 1000
+            sfreq = 1000
             info = mne.create_info(ch_names=[ch_name], sfreq=sfreq)
             if mne_raw is None:
                 mne_raw = mne.io.RawArray(data, info)
             else:
                 mne_raw.add_channels([mne.io.RawArray(data, info)])
-    except Exception as e:
-        pass
+        except Exception as e:
+            pass
 
-# mne_raw.load_data()
-mne_raw.reorder_channels(sorted(mne_raw.ch_names))
-# save night
-if save_night:
-    annotation = mne.Annotations(onset=[first_stim_sec],
-                                  duration=[0],
-                                  description=['stim_start'])
-    mne_raw.set_annotations(annotation)
-    mne_raw.save(f'D:\\Maya\\p{subj}\\P{subj}_fixed.fif', overwrite=True)
-    rotem_write_edf(mne_raw, f'D:\\Maya\\p{subj}\\P{subj}_fixed.edf')
+    # mne_raw.load_data()
+    mne_raw.reorder_channels(sorted(mne_raw.ch_names))
+    # save night
+    if save_night:
+        annotation = mne.Annotations(onset=[first_stim_sec],
+                                     duration=[0],
+                                     description=['stim_start'])
+        mne_raw.set_annotations(annotation)
+        mne_raw.save(f'D:\\Maya\\p{subj}\\P{subj}_fixed.fif', overwrite=True)
+        rotem_write_edf(mne_raw, f'D:\\Maya\\p{subj}\\P{subj}_fixed.edf')
 
-# save for tag
-if save_tag:
-    for_tag = mne_raw.copy().crop(tmin=first_stim_sec - 180, tmax=first_stim_sec + 180)
-# before_stim = mne_raw.copy().crop(tmin=first_stim_sec - (18 * 60), tmax=first_stim_sec - (15 * 60))
-# during_stim = mne_raw.copy().crop(tmin=first_stim_sec - 5, tmax=first_stim_sec + 180)
-# mne_raw.plot()
-    rotem_write_edf(for_tag, f'D:\\Maya\\p{subj}\\P{subj}_for_tag.edf')
-# rotem_write_edf(during_stim, f'C:\\Maya\\p{subj}\\P{subj}_during_stim.edf')
+    # save for tag
+    if save_tag:
+        for_tag = mne_raw.copy().crop(tmin=first_stim_sec - 180, tmax=first_stim_sec + 180)
+        # before_stim = mne_raw.copy().crop(tmin=first_stim_sec - (18 * 60), tmax=first_stim_sec - (15 * 60))
+        # during_stim = mne_raw.copy().crop(tmin=first_stim_sec - 5, tmax=first_stim_sec + 180)
+        # mne_raw.plot()
+        rotem_write_edf(for_tag, f'D:\\Maya\\p{subj}\\P{subj}_for_tag.edf')
+    # rotem_write_edf(during_stim, f'C:\\Maya\\p{subj}\\P{subj}_during_stim.edf')
 
+
+mat_to_edf_520()
+# mat_to_edf()
 print()
