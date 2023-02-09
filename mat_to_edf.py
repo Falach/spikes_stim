@@ -214,6 +214,6 @@ def mat_to_edf_520():
     # rotem_write_edf(during_stim, f'C:\\Maya\\p{subj}\\P{subj}_during_stim.edf')
 
 
-mat_to_edf_520()
+# mat_to_edf_520()
 # mat_to_edf()
 print()

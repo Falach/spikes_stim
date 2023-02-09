@@ -167,7 +167,7 @@ def format_raw(raw):
     return np.array(epochs)
 
 
-def detect_spikes(raw, plot=False):
+def detect_spikes(raw, plot=True):
     x = format_raw(raw)
     features = calc_features(x, subj)
     # check nans
@@ -247,11 +247,11 @@ def detect_subj_chan(subj, channels):
             # rates = fill_row(raw.copy().crop(tmin=start, tmax=end), rates, is_stim=True)
             rates = fill_row(raw_without_stim, rates, is_stim=True)
             if i + 1 < len(stim_sections_sec):
-                # the stop is the time between the end of the curr section and the start of the next
-                rates = fill_row(raw.copy().crop(tmin=end, tmax=stim_sections_sec[i + 1][0]), rates)
+                # the stop is the time between the end of the curr section and the start of the next, buffer of 0.5 sec of the stim
+                rates = fill_row(raw.copy().crop(tmin=end + 0.5, tmax=stim_sections_sec[i + 1][0] - 0.5), rates)
             else:
                 # 5 min after the last stim
-                rates = fill_row(raw.copy().crop(tmin=end, tmax=end + 60 * 5), rates)
+                rates = fill_row(raw.copy().crop(tmin=end + 0.5, tmax=end + 60 * 5), rates)
 
     results_df = pd.DataFrame(rates)
     results_df.to_csv(f'results/{subj}_{channels[0]}_rates.csv')
@@ -261,11 +261,11 @@ def detect_subj_chan(subj, channels):
 done = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '541', '545']
 problem = ['490', '520']  # second stim is weird, also have c3 and c4
 subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '538', '545']
-# subj = '497'
-# detect_subj_chan(subj, ['ROF5', 'ROF6'])
-run_again = [487, 490, 497, 499, 505, 510-7, 520, 538, 545]
+# for debug
+subj = '505'
+detect_subj_chan(subj, ['LEC1', 'LEC2'])
 
-for subj in subjects:
+for subj in ['541', '544']:
     print(f'subj: {subj}')
     subj_raw = mne.io.read_raw_edf(edf_path % (subj, subj))
     all_channels = get_clean_channels(subj, subj_raw)
@@ -284,7 +284,3 @@ for subj in subjects:
         rates = detect_subj_chan(subj, chans)
         # plot_subj_chan(rates, chans)
     print(1)
-
-# subj = '544'
-# detect_subj_chan(subj, ['LEC1', 'LEC2'])
-# remove_c3 = ['496', '489', '486', '488']
