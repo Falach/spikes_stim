@@ -78,16 +78,12 @@ def plot_all_subjects_top_10(subjects, chan_num=10, norm=False):
     counter1, counter2 = 0, 0
     for subj in subjects:
         df = pd.read_csv(f'results\\{subj}_chan_sum.csv')
-        # Top 10
         channels = df.sort_values(by='baseline', ascending=False).iloc[:chan_num, :]['channel'].tolist()
         blocks = []
         for chan in channels:
             chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv', index_col=0)
             y_axis = [chan_rates['rate'][0],  # the baseline
                       chan_rates['rate_1_20%'][2],
-                      # chan_rates['rate_2_20%'][2],
-                      # chan_rates['rate_3_20%'][2],
-                      # chan_rates['rate_4_20%'][2],
                       chan_rates['rate_5_20%'][2]]
             if norm:
                 # TODO: how to norm when baseline is 0
@@ -125,29 +121,20 @@ def plot_all_subjects_top_10(subjects, chan_num=10, norm=False):
     plt.ylabel('Spikes per minute')
     plt.text(0, 200, f'increase: {counter1}')
     plt.text(1, 200, f'increase: {counter2}')
-    # plt.show()
     plt.savefig(f'results\\all_first_undisturbed_block_top{chan_num}.png')
-    # plt.clf()
 
 
-def plot_all_subjects_first_block(subjects, norm=True, colors='auto'):
+def plot_all_subjects_first_block(subjects, norm=True, colors='auto', stim=False):
     all_avg = []
-    counter1, counter2 = 0, 0
     for subj in subjects.keys():
-        df = pd.read_csv(f'results\\{subj}_chan_sum.csv')
-        # Top 10
         channels = subjects[subj]
         blocks = []
         for chan in channels:
             chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv', index_col=0)
             y_axis = [chan_rates['rate'][0],  # the previous stop baseline
-                      chan_rates['rate_1_20%'][2],
-                      # chan_rates['rate_2_20%'][2],
-                      # chan_rates['rate_3_20%'][2],
-                      # chan_rates['rate_4_20%'][2],
-                      chan_rates['rate_5_20%'][2]]
+                      chan_rates['rate_1_20%'][1 if stim else 2],
+                      chan_rates['rate_5_20%'][1 if stim else 2]]
             if norm:
-                # TODO: how to norm when baseline is 0
                 y_axis[0] = y_axis[0] if y_axis[0] > 0 else 1
                 y_axis = np.array(y_axis) / y_axis[0]
                 y_axis = y_axis * 100 - 100
@@ -184,29 +171,22 @@ def plot_all_subjects_first_block(subjects, norm=True, colors='auto'):
     plt.ylabel('% Change in spike rate')
     plt.text(0, plt.ylim()[1] - 10, f'increase: {counter1}')
     plt.text(1, plt.ylim()[1] - 10, f'increase: {counter2}')
-    # plt.show()
     plt.savefig(f'results\\first_undisturbed_block_top_chans.png')
-    # plt.clf()
 
-def plot_all_subjects_all_blocks(subjects, norm=True, colors='auto'):
+
+def plot_all_subjects_all_blocks(subjects, norm=True, colors='auto', stim=False):
     all_avg = []
-    counter1, counter2 = 0, 0
     for subj in subjects.keys():
-        df = pd.read_csv(f'results\\{subj}_chan_sum.csv')
-        # Top 10
         channels = subjects[subj]
         blocks = []
         for chan in channels:
             chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv', index_col=0)
-            for i in range(2, len(chan_rates), 2):
-                y_axis = [chan_rates['rate'][0],  # the previous stop baseline
+            block_range = range(1, len(chan_rates), 2) if stim else range(2, len(chan_rates), 2)
+            for i in block_range:
+                y_axis = [chan_rates['rate'][0],
                           chan_rates['rate_1_20%'][i],
-                          # chan_rates['rate_2_20%'][2],
-                          # chan_rates['rate_3_20%'][2],
-                          # chan_rates['rate_4_20%'][2],
                           chan_rates['rate_5_20%'][i]]
                 if norm:
-                    # TODO: how to norm when baseline is 0
                     y_axis[0] = y_axis[0] if y_axis[0] > 0 else 1
                     y_axis = np.array(y_axis) / y_axis[0]
                     y_axis = y_axis * 100 - 100
@@ -243,7 +223,7 @@ def plot_all_subjects_all_blocks(subjects, norm=True, colors='auto'):
     plt.ylabel('% Change in spike rate')
     plt.text(0, plt.ylim()[1] - 10, f'increase: {counter1}')
     plt.text(1, plt.ylim()[1] - 10, f'increase: {counter2}')
-    # plt.show()
+
 
 all_after_clean = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '520', '538', '545']
 manual_select = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG1'], '496': ['RMH1'],
@@ -256,5 +236,21 @@ manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'L
                  '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
 #plot_subj_undisturbed(all_after_clean)
 # plot_all_subjects_top_10(['485', '486', '489', '496', '497', '498', '505', '515', '520'], norm=True, chan_num=1)
-plot_all_subjects_first_block(manual_select_14_thresh, norm=True, colors='auto')
+# plot_all_subjects_first_block(manual_select_14_thresh, norm=True, colors='auto')
 # plot_all_subjects_all_blocks(manual_select_14_thresh, norm=True, colors='auto')
+# plot_all_subjects_first_block(manual_select_14_thresh, norm=True, colors='auto', stim=True)
+# plot_all_subjects_all_blocks(manual_select_14_thresh, norm=True, colors='auto', stim=True)
+
+stim_side_right = ['485', '487', '489', '490', '496', '497', '510-1', '510-7', '515', '520', '538', '544', '545']
+# only ipsi hemisphere
+manual_ipsi = {}
+for subj in manual_select.keys():
+    curr_side = 'R' if subj in stim_side_right else 'L'
+    top_chans = [x for x in manual_select[subj] if x[0] == curr_side]
+    if len(top_chans) > 0:
+        manual_ipsi[subj] = top_chans
+
+# plot_all_subjects_first_block(manual_ipsi, norm=True, colors='auto')
+# plot_all_subjects_all_blocks(manual_ipsi, norm=True, colors='auto')
+# plot_all_subjects_first_block(manual_ipsi, norm=True, colors='auto', stim=True)
+plot_all_subjects_all_blocks(manual_ipsi, norm=True, colors='auto', stim=True)

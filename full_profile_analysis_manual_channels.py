@@ -67,12 +67,9 @@ def top_chan_profile_avg(subjects, norm='baseline', chan_num=10, plot_subj=False
     plt.xlabel('Time point')
     plt.ylabel('% change in spike rate')
     plt.xlim(-0.2, len(means) - 1)
-    # plt.ylim(0, 1)
-    # plt.xticks(list(range(0, len(means))))
     plt.locator_params(axis='y', nbins=15)
     plt.savefig(f'results/top_chans_full_profile_avg_5min_{norm}_norm')
     plt.clf()
-    # plt.show()
 
 
 def top_chan_minute_profile_avg(subjects, norm='baseline', chan_num=1):
@@ -102,9 +99,6 @@ def top_chan_minute_profile_avg(subjects, norm='baseline', chan_num=1):
         avg_df_subj = pd.DataFrame(all_chans, columns=[str(x) for x in range(0, len(y_axis))])
         means_subj = [avg_df_subj[str(i)].mean() for i in range(0, len(y_axis))]
         all_subj.append(means_subj)
-        # plt.plot(list(range(0, x_axis * 5)), y_axis, '-o')
-        # for i in range(0, len(chan_rates) * 5 - 1, 10):
-        #     plt.axvspan(i, i + 5, facecolor='silver', alpha=0.5)
 
     avg_df = pd.DataFrame(all_subj, columns=[str(x) for x in range(0, x_axis)])
     means = [avg_df[str(i)].mean() for i in range(0, x_axis)]
@@ -123,7 +117,6 @@ def top_chan_minute_profile_avg(subjects, norm='baseline', chan_num=1):
 
 def chans_profile_separate(subjects, norm='baseline', filename='top'):
     plt.rcParams['figure.figsize'] = [8, 5]
-    all_subj = []
     x_axis = []
     for subj in subjects.keys():
         top_chans = subjects[subj]
@@ -145,8 +138,6 @@ def chans_profile_separate(subjects, norm='baseline', filename='top'):
         means_subj = [avg_df_subj[str(i)].mean() for i in range(0, len(chan_rates))]
         std_subj = [sem(avg_df_subj[str(i)]) for i in range(0, len(chan_rates))]
         plt.title(f'{subj} {filename} channels full profile')
-        # chans_text = ', '.join(top_chans)
-        # plt.gcf().text(0.15, 0.01, chans_text, fontsize=10)
         plt.errorbar(range(len(y_axis)), means_subj, yerr=std_subj, capsize=5, fmt='-o', label='avg', color='black')
         plt.xlim(-0.8, len(y_axis) - 1)
         for i in range(0, len(x_axis) - 1, 2):
@@ -209,9 +200,9 @@ def top_chan_block_stim_type(subjects, error=True, norm='baseline'):
                 plt.text(k, plt.ylim()[1] - 5, str(j), size=8, color=color[stim_type])
             else:
                 plt.text(k, plt.ylim()[1] - 15, str(j), size=8, color=color[stim_type])
+
     for i in range(0, x_axis, 2):
         plt.axvspan(i, i + 1, facecolor='silver', alpha=0.5)
-
     plt.title(f'top channels avg full profile')
     plt.xlabel('Time point')
     plt.ylabel('% change in spike rate')
@@ -258,7 +249,6 @@ def top_chan_block_profile_avg_hemisphere(subjects, chan_num=10, norm='baseline'
             all_subj.append(means_subj)
 
         avg_df = pd.DataFrame(all_subj, columns=[str(x) for x in range(0, x_axis)])
-        subj_num = avg_df.count().tolist()
         means = [avg_df[str(i)].mean() for i in range(0, x_axis)]
         stds = [sem(avg_df[str(i)], nan_policy='omit') for i in range(0, x_axis)]
         plt.errorbar(list(range(0, x_axis))[:90], means[:90], yerr=stds[:90], capsize=3, fmt='-o',
@@ -269,8 +259,6 @@ def top_chan_block_profile_avg_hemisphere(subjects, chan_num=10, norm='baseline'
                 plt.text(k, plt.ylim()[1] - 5, str(j), size=8, color=color[stim_type])
             else:
                 plt.text(k, plt.ylim()[1] - 10, str(j), size=8, color=color[stim_type])
-        # plt.plot(list(range(0, x_axis)), means, '-o', label=stim_type, color=color[stim_type],
-        #          marker=marker[stim_type])
     for i in range(0, x_axis, 2):
         plt.axvspan(i, i + 1, facecolor='silver', alpha=0.5)
 
@@ -305,7 +293,6 @@ def subj_lateral_vs_mesial(lateral, mesial, norm='baseline'):
                 elif norm == 'minmax':
                     y_axis = (y_axis - np.min(y_axis)) / np.ptp(y_axis)
                 all_chans.append(y_axis)
-                # plt.plot(range(len(y_axis)), y_axis, '-o', label=chan)
             avg_df_subj = pd.DataFrame(all_chans, columns=[str(x) for x in range(0, len(chan_rates))])
             means_subj = [avg_df_subj[str(i)].mean() for i in range(0, len(chan_rates))]
             std_subj = [sem(avg_df_subj[str(i)]) for i in range(0, len(chan_rates))]
@@ -357,7 +344,6 @@ def lateral_vs_mesial(lateral, mesial, norm='baseline'):
             all_subj.append(means_subj)
 
         avg_df = pd.DataFrame(all_subj, columns=[str(x) for x in range(0, len(x_axis))])
-        subj_num = avg_df.count().tolist()
         means = [avg_df[str(i)].mean() for i in range(0, len(x_axis))]
         stds = [sem(avg_df[str(i)], nan_policy='omit') for i in range(0, len(x_axis))]
         plt.errorbar(list(range(0, len(x_axis))), means, yerr=stds, capsize=3, fmt='-o',
@@ -380,17 +366,19 @@ def lateral_vs_mesial(lateral, mesial, norm='baseline'):
     plt.clf()
 
 
-def all_subjects_baseline_vs_end(subjects, norm='baseline'):
+def all_subjects_baseline_vs_end(subjects, norm='baseline', end='end', box=False):
     all_avg = []
     for subj in subjects.keys():
-        df = pd.read_csv(f'results\\{subj}_chan_sum.csv')
-        # Top 10
         channels = subjects[subj]
         blocks = []
         for chan in channels:
             chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv', index_col=0)
-            y_axis = [chan_rates['rate'][0],
-                      chan_rates['rate'][len(chan_rates) - 1]]
+            if end == 'end':
+                y_axis = [chan_rates['rate'][0],
+                          chan_rates['rate'][len(chan_rates) - 1]]
+            else:
+                y_axis = [chan_rates['rate'][0],
+                          chan_rates['rate'][end]]
             if norm == 'baseline':
                 y_axis = np.array(y_axis) / y_axis[0]
                 y_axis = y_axis * 100 - 100
@@ -399,21 +387,39 @@ def all_subjects_baseline_vs_end(subjects, norm='baseline'):
         avg_df = pd.DataFrame(blocks, columns=['baseline', 'end'])
         means = [avg_df[i].mean() for i in ['baseline', 'end']]
         all_avg.append(means)
-        plt.plot(['baseline', 'end'], means, '-o')
+        if not box:
+            plt.plot(['baseline', 'end'], means, '-o')
 
     if norm == 'baseline':
         plt.axhline(y=0, color='black', linestyle='--')
-    counter1 = len([x for x in all_avg if x[1] - x[0] > 0])
-    all_avg_df = pd.DataFrame(all_avg, columns=['baseline', 'end'])
-    all_means = [all_avg_df[i].mean() for i in ['baseline', 'end']]
-    rect = plt.bar(['baseline', 'end'], all_means, alpha=0.5)
-    plt.bar_label(rect, padding=1)
+    if box:
+        plt.boxplot([[x[0] for x in all_avg], [x[1] for x in all_avg]], showmeans=True)
+        plt.xticks([1, 2], ['base', 'end'])
+    else:
+        all_avg_df = pd.DataFrame(all_avg, columns=['baseline', 'end'])
+        all_means = [all_avg_df[i].mean() for i in ['baseline', 'end']]
+        rect = plt.bar(['baseline', 'end'], all_means, alpha=0.5)
+        plt.bar_label(rect, padding=1)
     plt.title(f'baseline vs end rate- top channels avg, {len(subjects)} subj')
     plt.xlabel('Time point')
     plt.ylabel('% Change in spike rate')
+    counter1 = len([x for x in all_avg if x[1] - x[0] > 0])
     plt.text(0, plt.ylim()[1] - 10, f'increase: {counter1}')
-    # plt.show()
-    # plt.savefig(f'results\\first_undisturbed_block_top_chans.png')
+
+
+def all_subjects_baseline_avg(subjects, col='baseline'):
+    all_subj = []
+    for subj in subjects.keys():
+        subj_avg = []
+        df = pd.read_csv(f'results\\{subj}_chan_sum.csv')
+        for chan in subjects[subj]:
+            subj_avg.append(df[df['channel'] == chan][col].values[0])
+
+        all_subj.append(np.array(subj_avg).mean())
+
+    print(np.array(all_subj).mean())
+    print(1)
+
 
 frontal_stim = ['485', '486', '487', '488', '497', '498', '499', '505', '510-1', '510-7', '515', '520', '545']
 # temporal_stim = ['489', '490', '496', '538']
@@ -447,8 +453,10 @@ manual_select = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1
 # temporal_vs_frontal(all_after_clean, plot_subj=False)
 # temporal_vs_frontal(frontal_stim, plot_subj=False)
 
-# all_subjects_baseline_vs_end(manual_select, norm=False)
-all_subjects_baseline_vs_end(manual_select, norm='baseline')
+# all_subjects_baseline_vs_end(manual_select, norm=False, box=True)
+# all_subjects_baseline_vs_end(manual_select, norm='baseline')
+# all_subjects_baseline_avg(manual_select)
+# all_subjects_baseline_avg(manual_select, col='sum')
 
 manual_lateral = {'485': ['RPHG6'], '486': ['RPSMA5'], '488': ['LA7'],
                  '497': ['REC6', 'RPHG5', 'LAH6', 'LA5', 'LPHG5', 'RMH7'],
@@ -459,15 +467,19 @@ manual_mesial = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1
                  '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
 # chans_profile_separate(manual_lateral, filename='lateral')
 # lateral_vs_mesial(manual_lateral, manual_mesial)
+# all_subjects_baseline_avg(manual_lateral)
+all_subjects_baseline_avg(manual_lateral, col='sum')
 stim_side_right = ['485', '487', '489', '490', '496', '497', '510-1', '510-7', '515', '520', '538', '544', '545']
 
 # only ipsi hemisphere
-# manual_ipsi = {}
-# for subj in manual_select.keys():
-#     curr_side = 'R' if subj in stim_side_right else 'L'
-#     top_chans = [x for x in manual_select[subj] if x[0] == curr_side]
-#     if len(top_chans) > 0:
-#         manual_ipsi[subj] = top_chans
+manual_ipsi = {}
+for subj in manual_select.keys():
+    curr_side = 'R' if subj in stim_side_right else 'L'
+    top_chans = [x for x in manual_select[subj] if x[0] == curr_side]
+    if len(top_chans) > 0:
+        manual_ipsi[subj] = top_chans
+
+all_subjects_baseline_vs_end(manual_ipsi, norm='baseline')
 
 # top_chan_profile_avg(manual_ipsi, norm='baseline')
 # top_chan_minute_profile_avg(manual_ipsi)
