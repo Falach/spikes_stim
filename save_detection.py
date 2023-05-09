@@ -14,8 +14,8 @@ from pyprep.prep_pipeline import PrepPipeline
 import pyprep
 # from detector_with_conj import detect
 
-model_lgbm = joblib.load('models\LGBM_V1.pkl')
-model_rf = joblib.load('models\RF_V1.pkl')
+model_lgbm = joblib.load('models\LGBM_V2.pkl')
+model_rf = joblib.load('models\RF_V2.pkl')
 
 
 def bandpower_from_psd_ndarray(psd, freqs, bands, relative=True):
@@ -101,17 +101,14 @@ def calc_features(epochs, subj):
         feat[b] = bp[j]
 
     # Add power ratios for EEG
-    delta = feat['delta']
-    feat['dt'] = delta / feat['theta']
-    feat['ds'] = delta / feat['sigma']
-    feat['db'] = delta / feat['beta']
-    feat['dg'] = delta / feat['gamma']
-    feat['df'] = delta / feat['fast']
     feat['at'] = feat['alpha'] / feat['theta']
     feat['gt'] = feat['gamma'] / feat['theta']
     feat['ft'] = feat['fast'] / feat['theta']
     feat['ag'] = feat['gamma'] / feat['alpha']
     feat['af'] = feat['fast'] / feat['alpha']
+    feat['sf'] = feat['sigma'] / feat['fast']
+    feat['bf'] = feat['beta'] / feat['fast']
+    feat['gf'] = feat['gamma'] / feat['fast']
 
     # Add total power
     idx_broad = np.logical_and(
@@ -128,21 +125,19 @@ def calc_features(epochs, subj):
 
     # Convert to dataframe
     feat = pd.DataFrame(feat)
-    # feat.index.name = 'epoch'
 
-    ############################
-    # SMOOTHING & NORMALIZATION
-    ############################
-    roll1 = feat.rolling(window=1, center=True, min_periods=1, win_type='triang').mean()
-    roll1[roll1.columns] = robust_scale(roll1, quantile_range=(5, 95))
-    roll1 = roll1.iloc[:, 1:].add_suffix('_cmin_norm')
+    return feat
 
-    roll3 = feat.rolling(window=3, center=True, min_periods=1, win_type='triang').mean()
-    roll3[roll3.columns] = robust_scale(roll3, quantile_range=(5, 95))
-    roll3 = roll3.iloc[:, 1:].add_suffix('_pmin_norm')
 
-    # Add to current set of features
-    feat = feat.join(roll1).join(roll3)
+def channel_feat(raw, channel):
+    raw_data = raw.pick_channels([channel]).resample(sr).get_data()[0]
+    feat = {
+        'median': np.median(raw_data),
+        'ptp': np.ptp(raw_data),
+        # 'iqr': sp_stats.iqr(chan),
+        # 'skew': sp_stats.skew(chan),
+        # 'kurt': sp_stats.kurtosis(chan),
+    }
 
     return feat
 
@@ -151,10 +146,7 @@ def format_raw(raw):
     epochs = []
     window_size = int(sr / 4)
     raw.load_data()
-
-    # Create bipolar channel
-    raw_bi = mne.set_bipolar_reference(raw, raw.ch_names[0], raw.ch_names[1], ch_name='bi')
-    raw_data = raw_bi.get_data()[0]
+    raw_data = raw.get_data()[0]
 
     # Normalization
     raw_data = sp_stats.zscore(raw_data)
@@ -170,8 +162,11 @@ def format_raw(raw):
 def detect_spikes(raw, plot=True):
     x = format_raw(raw)
     features = calc_features(x, subj)
+    chan_feat = channel_feat(raw, raw.ch_names[0])
+    for feat in chan_feat.keys():
+        features[feat] = chan_feat[feat]
+
     # check nans
-    # np.where(np.asanyarray(np.isnan(features[model_lgbm.feature_name_])))
     features = np.nan_to_num(features[model_lgbm.feature_name_])
     y_lgbm = model_lgbm.predict(features)
     y_rf = model_rf.predict(features)
@@ -180,9 +175,7 @@ def detect_spikes(raw, plot=True):
     if plot:
         spikes_onsets = np.where(y == 1)[0] / 4
         raw.set_annotations(mne.Annotations(spikes_onsets, [0.25] * len(spikes_onsets), ['spike'] * len(spikes_onsets)))
-        mne.set_bipolar_reference(raw, raw.ch_names[0], raw.ch_names[1], ch_name='bi', drop_refs=False).plot(
-            duration=30, scalings='auto')
-        # raw.plot(duration=30)
+        raw.plot(duration=30, scalings='auto')
     return y
 
 
@@ -222,16 +215,14 @@ def fill_row(raw, rates, is_stim=False):
 
     return rates
 
-def detect_subj_chan(subj, channels):
+def detect_subj_chan(subj, chan):
     rates = {'n_spikes': [], 'duration_sec': [], 'rate': [], 'duration_20%': [], 'n_1_20%': [], 'n_2_20%': [],
              'n_3_20%': [], 'n_4_20%': [], 'n_5_20%': [], 'rate_1_20%': [], 'rate_2_20%': [], 'rate_3_20%': [],
              'rate_4_20%': [], 'rate_5_20%': [], 'is_stim': []}
     stim_sections_sec = get_stim_starts(subj)
     stim_start_sec = stim_sections_sec[0][0]
     stim_end_sec = stim_sections_sec[-1][1]
-    raw = mne.io.read_raw_edf(edf_path % (subj, subj)).pick_channels(channels)
-    # for cleaning
-    # raw.plot_psd()
+    raw = mne.io.read_raw_edf(edf_path % (subj, subj)).pick_channels([chan])
 
     # get the 5 minutes before first stim spikes rate (or until the first stim if shorter)
     if stim_start_sec - 60 * 5 < 0:
@@ -244,7 +235,6 @@ def detect_subj_chan(subj, channels):
     for i, (start, end) in enumerate(stim_sections_sec):
             # fill the current stim
             raw_without_stim = remove_stim(subj, raw.copy().crop(tmin=start, tmax=end), start, end)
-            # rates = fill_row(raw.copy().crop(tmin=start, tmax=end), rates, is_stim=True)
             rates = fill_row(raw_without_stim, rates, is_stim=True)
             if i + 1 < len(stim_sections_sec):
                 # the stop is the time between the end of the curr section and the start of the next, buffer of 0.5 sec of the stim
@@ -254,33 +244,22 @@ def detect_subj_chan(subj, channels):
                 rates = fill_row(raw.copy().crop(tmin=end + 0.5, tmax=end + 60 * 5), rates)
 
     results_df = pd.DataFrame(rates)
-    results_df.to_csv(f'results/{subj}_{channels[0]}_rates.csv')
+    results_df.to_csv(f'results/{subj}_{chan}_rates.csv')
 
     return rates
 
 done = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '541', '545']
-problem = ['490', '520']  # second stim is weird, also have c3 and c4
+problem = ['490', '520']
 subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '538', '545']
 # for debug
-subj = '505'
-detect_subj_chan(subj, ['LEC1', 'LEC2'])
+subj = '485'
+detect_subj_chan(subj, 'RMH1')
 
 for subj in ['541', '544']:
     print(f'subj: {subj}')
     subj_raw = mne.io.read_raw_edf(edf_path % (subj, subj))
     all_channels = get_clean_channels(subj, subj_raw)
-    chans_bi = []
-
-    # get the channels for bipolar reference
-    for i, chan in enumerate(all_channels):
-        if i + 1 < len(all_channels):
-            next_chan = all_channels[i + 1]
-            # check that its the same contact
-            if next_chan[:-1] == chan[:-1]:
-                chans_bi.append([chan, next_chan])
 
     # run on each channel and detect the spikes between stims
-    for chans in chans_bi:
-        rates = detect_subj_chan(subj, chans)
-        # plot_subj_chan(rates, chans)
-    print(1)
+    for chan in all_channels:
+        rates = detect_subj_chan(subj, chan)
