@@ -8,9 +8,9 @@ from scipy.stats import sem
 
 
 # sum up all the files per channel to one csv with the baseline and total spikes per channel
-def calc_rate_per_chan(subjects):
+def calc_rate_per_chan(subjects, control=False):
     for subj in subjects:
-        subj_files_list = glob.glob(f'results\\{subj}*rates*')
+        subj_files_list = glob.glob(f'results\\{subj}*rates*' if not control else f'results\\control\\{subj}*rates*')
         rates_per_chan = {'channel': [], 'baseline': [], 'sum': [], 'duration': []}
         for i, curr_file in enumerate(subj_files_list):
             if 'stim' not in curr_file:
@@ -21,7 +21,7 @@ def calc_rate_per_chan(subjects):
                 rates_per_chan['sum'].append(int(chan_rates['n_spikes'].sum()))
                 rates_per_chan['duration'].append(int(chan_rates['duration_sec'].sum()))
                 # TODO: calc!
-                rates_per_chan['mean_rate'].append(0)
+                #rates_per_chan['mean_rate'].append(0)
 
         df = pd.DataFrame(rates_per_chan)
         df.to_csv(f'results\\{subj}_chan_sum.csv')
@@ -880,7 +880,7 @@ all_after_clean = ['485', '486', '487', '488', '489', '496', '497', '498', '499'
 # top_channel_full_profile(all_after_clean, norm=None)
 # top10_chan_profile_avg(['485', '486', '489', '496', '497', '498', '505', '515', '520'], chan_num=1) # manually change filename
 # top10_chan_profile_avg(['485', '486', '489', '496', '497', '498', '505', '515', '520'], chan_num=1, norm='minmax') # manually change filename
-top10_chan_profile_avg(all_after_clean, chan_num=1)
+# top10_chan_profile_avg(all_after_clean, chan_num=1)
 # top10_chan_profile_avg(all_after_clean, chan_num=10)
 # top10_chan_profile_avg(all_after_clean, chan_num=1, norm='minmax')
 # top10_chan_profile_avg(all_after_clean, chan_num=10, norm='minmax')
@@ -913,3 +913,5 @@ manual_select = {'485': ['RMH1, RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG
                  '499': ['LMH5'], '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'], '515': ['RA1', 'RAH2'],
                  '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
 
+# control round
+calc_rate_per_chan(['396', '398', '402', '406', '415', '416'], control=True)

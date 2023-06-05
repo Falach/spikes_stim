@@ -9,9 +9,11 @@ import glob
 
 sr = 1000
 edf_path = 'D:\\Maya\\p%s\\P%s_fixed.edf'
+control_path = 'C:\\UCLA\\P%s_overnightData.edf'
 edf_bipolar_path = 'D:\\Maya\\p%s\\P%s_bipolar.edf'
 stim_path = 'D:\\Maya\\p%s\\p%s_stim_timing.csv'
 scoring_path = 'D:\\Maya\\p%s\\p%s_sleep_scoring.m'
+control_scoring_path = 'D:\\UCLA_NREM\\P%s_hypno.txt'
 montage_path = 'D:\\Maya\\p%s\\MacroMontage.mat'
 all_subj = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '520',
             '538', '541', '544', '545']
@@ -44,9 +46,14 @@ def remove_stim(subj, block_raw, start, end):
     stim = pd.read_csv(stim_path % (subj, subj), header=None).iloc[0, :].to_list()
     stim = [round(x) for x in stim]
     # get the relevant section from the list with all stimuli
-    start_round = start * 1000 if start * 1000 in stim else round(start * 1000)
-    end_round = end * 1000 if end * 1000 in stim else round(end * 1000)
-    current = stim[len(stim) - stim[::-1].index(start_round) - 1: stim.index(end_round) + 1]
+    start_stim = [x for x in stim if x >= start * 1000]
+    end_stim = [x for x in stim if x <= end * 1000]
+    if start_stim == [] or end_stim == [] or start_stim[0] >= end_stim[-1]:
+        return block_raw
+    else:
+        start_stim = start_stim[0]
+        end_stim = end_stim[-1]
+    current = stim[len(stim) - stim[::-1].index(start_stim) - 1: stim.index(end_stim) + 1]
     for i, stim_time in enumerate(current):
         if i + 1 < len(current):
             tmin = current[i] / 1000 - start + 0.5
@@ -61,81 +68,8 @@ def remove_stim(subj, block_raw, start, end):
                 # flat_2 = np.full(60 * sr, last_vals[1])
                 # raws.append(mne.io.RawArray(np.vstack((flat_1, flat_2)), info))
 
-    # final = mne.concatenate_raws(raws[:-1])
-    final = mne.concatenate_raws(raws)
-    # final.plot(duration=30)
-    return final
+    return mne.concatenate_raws(raws)
 
-# def generate_file_name(func, subj, norm, chans):
-
-
-def sleep_scoring(subjects):
-    for subj in subjects:
-        f = sio.loadmat(scoring_path % (subj, subj))
-        data = f['sleep_score']
-        scoring = np.array(data)[0]
-        nrem = np.where(scoring == 1)
-        plt.plot(scoring)
-        stims = get_stim_starts(subj)
-        for (start, end) in stims:
-            plt.axvspan(start * 1000, end * 1000, facecolor='silver', alpha=0.5)
-
-        total_stim_time = round(1000 * (max(stims)[1] - min(stims)[0]))
-        stim_scoring = scoring[round(min(stims)[0] * 1000): round(max(stims)[1] * 1000)]
-        stim_nrem = np.where(stim_scoring == 1)[0]
-        sleep_percent = round(len(stim_nrem) / total_stim_time * 100, 2)
-        plt.title(f'{subj} scoring and stim sessions- {sleep_percent}% sleep')
-        plt.xlabel('Time')
-        plt.ylabel('scoring value')
-        plt.xlim(0, len(scoring))
-        # plt.ylim(-1, 1)
-        plt.locator_params(axis='y', nbins=3)
-        plt.savefig(f'results/scoring/{subj}_scoring_and_stim.png')
-        plt.clf()
-
-
-def sleep_annotations(subjects):
-    for subj in subjects:
-        f = sio.loadmat(scoring_path % (subj, subj))
-        data = f['sleep_score']
-        scoring = np.array(data)[0]
-        subj_blocks = []
-        stim_sections_sec = get_stim_starts(subj)
-        stim_start_sec = stim_sections_sec[0][0]
-
-        # get the 5 minutes before first stim spikes rate (or until the first stim if shorter)
-        if stim_start_sec - 60 * 5 < 0:
-            start = 0
-        else:
-            start = stim_start_sec - 60 * 5
-        block_scoring = scoring[round(start * 1000): round(stim_start_sec * 1000)]
-        block_nrem = np.where(block_scoring == 1)[0]
-        sleep_percent = round((len(block_nrem) / len(block_scoring)) * 100, 2)
-        subj_blocks.append([start, stim_start_sec, sleep_percent])
-
-        # fill sections of stim and the stops between
-        for i, (start, end) in enumerate(stim_sections_sec):
-            # fill the current stim
-            block_scoring = scoring[round(start * 1000): round(end * 1000)]
-            block_nrem = np.where(block_scoring == 1)[0]
-            sleep_percent = round((len(block_nrem) / len(block_scoring)) * 100, 2)
-            subj_blocks.append([start, end, sleep_percent])
-            if i + 1 < len(stim_sections_sec):
-                # the stop is the time between the end of the curr section and the start of the next, buffer of 0.5 sec of the stim
-                start = end
-                end = stim_sections_sec[i + 1][0]
-            else:
-                # 5 min after the last stim
-                start = end
-                end = end + 60 * 5
-            block_scoring = scoring[round(start * 1000): round(end * 1000)]
-            block_nrem = np.where(block_scoring == 1)[0]
-            sleep_percent = round((len(block_nrem) / len(block_scoring)) * 100, 2)
-            subj_blocks.append([start, end, sleep_percent])
-
-        pd.DataFrame(subj_blocks, columns=['start', 'end', 'sleep_percent']).to_csv(f'results/{subj}_sleep_percent.csv')
-
-# sleep_annotations(['496', '497', '498', '499', '505', '510-1', '510-7', '515', '520', '538', '541', '544', '545'])
 
 def get_clean_channels(subj, raw):
     to_remove = ['C3', 'C4', 'PZ', 'CZ', 'EZ', 'EMG1', 'EMG2', 'EOG1', 'EOG2', 'A1', 'A2']
@@ -161,77 +95,67 @@ def get_clean_channels(subj, raw):
 
     return final
 
-
-def plot_bipolar():
-    from mat_to_edf import rotem_write_edf
-    from mnelab.io.writers import write_edf
-    done = ['485', '486', '487', '488', '489', '490', '496', '497', '498', '499', '505', '510-1', '510-7']
-    subjects = ['515', '520', '538', '541', '544', '545']
-    for subj in subjects:
-        print(f'subj: {subj}')
-        subj_raw = mne.io.read_raw_edf(edf_path % (subj, subj))
-        all_channels = get_clean_channels(subj, subj_raw)
-        chans_bi = []
-
-        # get the channels for bipolar reference
-        for i, chan in enumerate(all_channels):
-            if i + 1 < len(all_channels):
-                next_chan = all_channels[i + 1]
-                # check that its the same contact
-                if next_chan[:-1] == chan[:-1]:
-                    chans_bi.append([chan, next_chan])
-
-        # for cleaning
-        subj_raw.load_data()
-        raw_bi = mne.set_bipolar_reference(subj_raw, [x[0] for x in chans_bi], [x[1] for x in chans_bi], drop_refs=True)
-
-        write_edf(edf_bipolar_path % (subj, subj), raw_bi)
-        # raw_bi.plot(duration=30, scalings='auto')
+def get_control_clean_channels(subj, raw):
+    to_remove = ['C3', 'C4', 'PZ', 'CZ', 'EZ', 'EMG1', 'EMG2', 'EOG1', 'EOG2', 'A1', 'A2', 'X1', 'X1-REF', 'ECG']
+    final = [chan for chan in raw.ch_names if chan.upper() not in to_remove]
+    return final
 
 
-def avg_block_size(subjects):
-    rates = {subj: [[], []] for subj in subjects}
-    for subj in subjects:
-        subj_files_list = [file for file in glob.glob(f'results\\{subj}*rates*') if 'stim' not in file]
-        chan_rates = pd.read_csv(subj_files_list[0], index_col=0)
-        for i in range(1, len(chan_rates) - 1, 2):
-            rates[subj][0].append(chan_rates['duration_sec'].tolist()[i])
-            rates[subj][1].append(chan_rates['duration_sec'].tolist()[i + 1])
+def get_nrem_epochs(subj='485', with_stim=True):
+    f = sio.loadmat(scoring_path % (subj, subj))
+    data = f['sleep_score']
+    scoring = np.array(data)[0]
+    nrem = np.where(scoring == 1)
+    nrem_epochs = []
+    start = nrem[0][0]
+    for i in range(len(nrem[0]) - 1):
+        if nrem[0][i + 1] - nrem[0][i] != 1:
+            nrem_epochs.append([start / 1000, nrem[0][i] / 1000])
+            start = nrem[0][i + 1]
 
-    stim_means = [round(np.array(rates[subj][0]).mean()) for subj in subjects]
-    undisturbed_means = [round(np.array(rates[subj][1]).mean()) for subj in subjects]
+    # in case there is only one epoch
+    if nrem_epochs == []:
+        nrem_epochs.append([start / 1000, nrem[0][-1] / 1000])
 
-    x = np.arange(len(subjects))  # the label locations
-    width = 0.35  # the width of the bars
+    if with_stim:
+        nrem_stim_epochs = []
+        stim = get_stim_starts(subj)
+        for epoch in nrem_epochs[:]:
+            for stim_start in stim:
+                if epoch[0] <= stim_start[0] <= epoch[1]:
+                    nrem_stim_epochs.append(epoch)
+                    # nrem_epochs.remove(epoch)
+                    break
 
-    fig, ax = plt.subplots()
-    rects1 = ax.bar(x - width / 2, stim_means, width, label='stim', color='tab:orange', alpha=0.5)
-    rects2 = ax.bar(x + width / 2, undisturbed_means, width, label='undisturbed', color='tab:blue', alpha=0.5)
+    return nrem_epochs, nrem_stim_epochs, stim
 
-    # Add some text for labels, title and custom x-axis tick labels, etc.
-    ax.set_ylabel('duration (sec)')
-    ax.set_title('Blocks duration')
-    ax.set_xticks(x)
-    ax.set_xticklabels(subjects)
-    ax.legend()
+def is_stim_in_epoch(subj, start, end):
+    stim = get_stim_starts(subj)
+    for stim_start in stim:
+        if start <= stim_start[0] <= end:
+            return True
 
-    ax.bar_label(rects1, padding=3, fontsize=8)
-    ax.bar_label(rects2, padding=3, fontsize=8)
-    plt.show()
+    return False
 
-    # Add scatter
-    for i, subj in enumerate(subjects):
-        ax.scatter([i - 0.25] * len(rates[subj][0]), rates[subj][0], color='tab:orange', s=14)
-        ax.scatter([i + 0.25] * len(rates[subj][1]), rates[subj][1], color='tab:blue', s=14)
+def get_control_nrem_epochs(subj='402'):
+    scoring = np.loadtxt(control_scoring_path % subj)
+    # n1 =1, n2 =2, n3 =3
+    nrem = np.where(np.logical_and(scoring >= 1, scoring <= 3))
+    nrem_epochs = []
+    start = nrem[0][0]
+    for i in range(len(nrem[0]) - 1):
+        if nrem[0][i + 1] - nrem[0][i] != 1:
+            # each epoch is 30 sec
+            nrem_epochs.append([start * 30, nrem[0][i] * 30])
+            start = nrem[0][i + 1]
 
-    plt.xticks(rotation=45)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-    print(1)
+    return nrem_epochs
+
 
 manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
                  '497': ['RPHG2', 'REC2', 'LAH1', 'LPHG3', 'RMH2', 'LEC1'], '498': ['REC2', 'RMH1', 'RA2', 'RPHG4'],
                  '499': ['LMH5'], '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'],
                  '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
 # avg_block_size(all_subj)
+# plot_stim_duration(all_subj)
+# get_control_nrem_epochs()

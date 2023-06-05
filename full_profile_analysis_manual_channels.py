@@ -115,14 +115,14 @@ def top_chan_minute_profile_avg(subjects, norm='baseline', chan_num=1):
     plt.clf()
 
 
-def chans_profile_separate(subjects, norm='baseline', filename='top'):
+def chans_profile_separate(subjects, norm='baseline', filename='top', csv_file='results\\%s_%s_rates.csv'):
     plt.rcParams['figure.figsize'] = [8, 5]
     x_axis = []
     for subj in subjects.keys():
         top_chans = subjects[subj]
         all_chans = []
         for chan in top_chans:
-            chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv', index_col=0)
+            chan_rates = pd.read_csv(csv_file % (subj, chan), index_col=0)
             # check the x axis for the avg of all subjects
             if len(chan_rates) > len(x_axis):
                 x_axis = list(range(0, len(chan_rates)))
@@ -366,13 +366,13 @@ def lateral_vs_mesial(lateral, mesial, norm='baseline'):
     plt.clf()
 
 
-def all_subjects_baseline_vs_end(subjects, norm='baseline', end='end', box=False):
+def all_subjects_baseline_vs_end(subjects, control=False, norm='amit', end='end', box=False):
     all_avg = []
     for subj in subjects.keys():
         channels = subjects[subj]
         blocks = []
         for chan in channels:
-            chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv', index_col=0)
+            chan_rates = pd.read_csv(f'results\\{subj}_{chan}_rates.csv' if not control else f'results\\control\\{subj}_{chan}_rates.csv', index_col=0)
             if end == 'end':
                 y_axis = [chan_rates['rate'][0],
                           chan_rates['rate'][len(chan_rates) - 1]]
@@ -382,6 +382,8 @@ def all_subjects_baseline_vs_end(subjects, norm='baseline', end='end', box=False
             if norm == 'baseline':
                 y_axis = np.array(y_axis) / y_axis[0]
                 y_axis = y_axis * 100 - 100
+            elif norm == 'amit':
+                y_axis = [0] + [((y_axis[1] - y_axis[0]) / max(y_axis[0], y_axis[1])) * 100]
             blocks.append(y_axis)
 
         avg_df = pd.DataFrame(blocks, columns=['baseline', 'end'])
@@ -390,7 +392,7 @@ def all_subjects_baseline_vs_end(subjects, norm='baseline', end='end', box=False
         if not box:
             plt.plot(['baseline', 'end'], means, '-o')
 
-    if norm == 'baseline':
+    if norm is not None:
         plt.axhline(y=0, color='black', linestyle='--')
     if box:
         plt.boxplot([[x[0] for x in all_avg], [x[1] for x in all_avg]], showmeans=True)
@@ -404,7 +406,7 @@ def all_subjects_baseline_vs_end(subjects, norm='baseline', end='end', box=False
     plt.xlabel('Time point')
     plt.ylabel('% Change in spike rate')
     counter1 = len([x for x in all_avg if x[1] - x[0] > 0])
-    plt.text(0, plt.ylim()[1] - 10, f'increase: {counter1}')
+    # plt.text(0, plt.ylim()[1] - 10, f'increase: {counter1}')
 
 
 def all_subjects_baseline_avg(subjects, col='baseline'):
@@ -455,6 +457,7 @@ manual_select = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1
 
 # all_subjects_baseline_vs_end(manual_select, norm=False, box=True)
 # all_subjects_baseline_vs_end(manual_select, norm='baseline')
+# all_subjects_baseline_vs_end(manual_select)
 # all_subjects_baseline_avg(manual_select)
 # all_subjects_baseline_avg(manual_select, col='sum')
 
@@ -468,34 +471,42 @@ manual_mesial = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1
 # chans_profile_separate(manual_lateral, filename='lateral')
 # lateral_vs_mesial(manual_lateral, manual_mesial)
 # all_subjects_baseline_avg(manual_lateral)
-all_subjects_baseline_avg(manual_lateral, col='sum')
-stim_side_right = ['485', '487', '489', '490', '496', '497', '510-1', '510-7', '515', '520', '538', '544', '545']
+# all_subjects_baseline_avg(manual_lateral, col='sum')
+# stim_side_right = ['485', '487', '489', '490', '496', '497', '510-1', '510-7', '515', '520', '538', '544', '545']
+#
+# # only ipsi hemisphere
+# manual_ipsi = {}
+# for subj in manual_select.keys():
+#     curr_side = 'R' if subj in stim_side_right else 'L'
+#     top_chans = [x for x in manual_select[subj] if x[0] == curr_side]
+#     if len(top_chans) > 0:
+#         manual_ipsi[subj] = top_chans
+#
+# all_subjects_baseline_vs_end(manual_ipsi, norm='baseline')
+#
+# # top_chan_profile_avg(manual_ipsi, norm='baseline')
+# # top_chan_minute_profile_avg(manual_ipsi)
+# # top_chan_block_stim_type(manual_ipsi, error=True)
+#
+# lateral_ipsi = {}
+# for subj in manual_lateral.keys():
+#     curr_side = 'R' if subj in stim_side_right else 'L'
+#     top_chans = [x for x in manual_lateral[subj] if x[0] == curr_side]
+#     if len(top_chans) > 0:
+#         lateral_ipsi[subj] = top_chans
+# mesial_ipsi = {}
+# for subj in manual_mesial.keys():
+#     curr_side = 'R' if subj in stim_side_right else 'L'
+#     top_chans = [x for x in manual_mesial[subj] if x[0] == curr_side]
+#     if len(top_chans) > 0:
+#         mesial_ipsi[subj] = top_chans
+# lateral_vs_mesial(lateral_ipsi, mesial_ipsi)
 
-# only ipsi hemisphere
-manual_ipsi = {}
-for subj in manual_select.keys():
-    curr_side = 'R' if subj in stim_side_right else 'L'
-    top_chans = [x for x in manual_select[subj] if x[0] == curr_side]
-    if len(top_chans) > 0:
-        manual_ipsi[subj] = top_chans
+control_chans = {'396': ['LAH1', 'LPHG2', 'LMH1', 'LEC1', 'LA2'], '398': ['LA1', 'LAH1', 'RAH1', 'RA2', 'REC3', 'LPHG1'],
+                 '402': ['LA1', 'RAH1', 'LAH1', 'RA2', 'REC1'], '406': ['LPHG2', 'RPHG1', 'RAH1', 'RA2', 'LAH1', 'RMPF3'],
+                 '415': ['LAH1', 'RA1', 'RAH1', 'LEC1', 'REC1'], '416': ['LAH2', 'RA2', 'RAH1', 'RIFGA1']}
 
-all_subjects_baseline_vs_end(manual_ipsi, norm='baseline')
-
-# top_chan_profile_avg(manual_ipsi, norm='baseline')
-# top_chan_minute_profile_avg(manual_ipsi)
-# top_chan_block_stim_type(manual_ipsi, error=True)
-
-lateral_ipsi = {}
-for subj in manual_lateral.keys():
-    curr_side = 'R' if subj in stim_side_right else 'L'
-    top_chans = [x for x in manual_lateral[subj] if x[0] == curr_side]
-    if len(top_chans) > 0:
-        lateral_ipsi[subj] = top_chans
-mesial_ipsi = {}
-for subj in manual_mesial.keys():
-    curr_side = 'R' if subj in stim_side_right else 'L'
-    top_chans = [x for x in manual_mesial[subj] if x[0] == curr_side]
-    if len(top_chans) > 0:
-        mesial_ipsi[subj] = top_chans
-lateral_vs_mesial(lateral_ipsi, mesial_ipsi)
-
+# all_subjects_baseline_vs_end(control_chans, control=True)
+# all_subjects_baseline_vs_end(manual_select)
+# TODO: same funct but sum 1 first hour of combined nrem, then 2, then 3, then 4, then 5 and plot
+chans_profile_separate(manual_select, csv_file='results\\%s_%s_nrem_rates.csv')
