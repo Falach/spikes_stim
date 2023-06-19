@@ -17,6 +17,8 @@ scoring_path = 'D:\\Maya\\p%s\\p%s_sleep_scoring.m'
 montage_path = 'D:\\Maya\\p%s\\MacroMontage.mat'
 all_subj = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '520',
             '538', '541', '544', '545']
+all_control = ['396', '398', '402', '404', '405', '406', '415', '416']
+
 
 def sleep_scoring(subjects):
     for subj in subjects:
@@ -211,6 +213,34 @@ def plot_before_stim_duration(subjects):
     plt.show()
 
 
+def channels_scatter(subjects=['485']):
+    for subj in subjects:
+        rates_per_chan = {}
+        subj_files_list = glob.glob(f'results\\{subj}*split*')
+        for i, curr_file in enumerate(subj_files_list):
+            ch_name = curr_file.split(f'{subj}_')[1].split('_nrem')[0]
+            chan_rates = pd.read_csv(curr_file, index_col=0)
+            curr_chan = []
+            for i in [0, 1]:
+                curr_rates = chan_rates[chan_rates.is_stim == i]
+                total_duration = curr_rates['duration_sec'].sum() / 60
+                total_spikes = curr_rates['n_spikes'].sum()
+                # if total_duration == 0:
+                curr_chan.append(total_spikes / total_duration)
+            # normalize by max
+            baseline = curr_chan[0] if curr_chan[0] is not None else curr_chan[1]
+            norm_chan = [np.nan if x is None else (x - baseline) / max(x, baseline) for x in curr_chan]
+            rates_per_chan[ch_name] = [curr_chan[0], norm_chan[1]]
+        plt.scatter([x[1] for x in rates_per_chan.values()], [x[0] for x in rates_per_chan.values()])
+        plt.xlim([1, -1])  # maybe increase range?
+        plt.axhline(y=2, color='r', linestyle='dashed')
+        plt.axvline(x=0, color='b', linestyle='dashed')
+        plt.xlabel('% spike rate reduction')
+        plt.ylabel('channel baseline rate')
+        plt.title(f'{subj} channels')
+        plt.savefig(f'results\\{subj}_channels_scatter.png')
+        plt.clf()
+
 manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
                  '497': ['RPHG2', 'REC2', 'LAH1', 'LPHG3', 'RMH2', 'LEC1'], '498': ['REC2', 'RMH1', 'RA2', 'RPHG4'],
                  '499': ['LMH5'], '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'],
@@ -219,4 +249,5 @@ manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', '
 # plot_stim_duration(all_subj)
 # get_nrem_epochs()
 # sleep_scoring(subjects=all_subj)
-plot_before_stim_duration(all_subj)
+# plot_before_stim_duration(all_subj)
+channels_scatter(['541', '544'])

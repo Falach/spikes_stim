@@ -17,6 +17,7 @@ control_scoring_path = 'D:\\UCLA_NREM\\P%s_hypno.txt'
 montage_path = 'D:\\Maya\\p%s\\MacroMontage.mat'
 all_subj = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '520',
             '538', '541', '544', '545']
+all_control = ['396', '398', '402', '404', '405', '406', '415', '416']
 
 # get the blocks start and end time
 def get_stim_starts(subj):
@@ -88,6 +89,8 @@ def get_clean_channels(subj, raw):
                 last_chan = str(chan['Area'][0])
             # remove if there is a flag of bad channel
             if chan['badChannel'] in [1, 2, 5]:
+                if subj == '485' and chan['Area'][0] == 'RPHG':
+                    continue
                 to_remove.append(str(chan['Area'][0]) + str(chan_index))
             chan_index += 1
 
@@ -96,12 +99,14 @@ def get_clean_channels(subj, raw):
     return final
 
 def get_control_clean_channels(subj, raw):
-    to_remove = ['C3', 'C4', 'PZ', 'CZ', 'EZ', 'EMG1', 'EMG2', 'EOG1', 'EOG2', 'A1', 'A2', 'X1', 'X1-REF', 'ECG']
+    to_remove = ['C3', 'C4', 'PZ', 'CZ', 'EZ', 'EMG1', 'EMG2', 'EOG1', 'EOG2', 'A1', 'A2', 'X1', 'X1-REF', 'ECG', 'EKG']
+    if subj == '405':
+        to_remove.extend(['RAH1', 'RAH6'])
     final = [chan for chan in raw.ch_names if chan.upper() not in to_remove]
     return final
 
 
-def get_nrem_epochs(subj='485', with_stim=True):
+def get_nrem_epochs(subj='510-1', with_stim=True):
     f = sio.loadmat(scoring_path % (subj, subj))
     data = f['sleep_score']
     scoring = np.array(data)[0]
@@ -114,8 +119,8 @@ def get_nrem_epochs(subj='485', with_stim=True):
             start = nrem[0][i + 1]
 
     # in case there is only one epoch
-    if nrem_epochs == []:
-        nrem_epochs.append([start / 1000, nrem[0][-1] / 1000])
+    # if nrem_epochs == []:
+    nrem_epochs.append([start / 1000, nrem[0][-1] / 1000])
 
     if with_stim:
         nrem_stim_epochs = []
@@ -124,11 +129,11 @@ def get_nrem_epochs(subj='485', with_stim=True):
             for stim_start in stim:
                 if epoch[0] <= stim_start[0] <= epoch[1]:
                     nrem_stim_epochs.append(epoch)
-                    # nrem_epochs.remove(epoch)
                     break
 
     return nrem_epochs, nrem_stim_epochs, stim
 
+get_nrem_epochs()
 def is_stim_in_epoch(subj, start, end):
     stim = get_stim_starts(subj)
     for stim_start in stim:
@@ -137,19 +142,54 @@ def is_stim_in_epoch(subj, start, end):
 
     return False
 
-def get_control_nrem_epochs(subj='402'):
+def get_control_nrem_epochs(subj='404'):
     scoring = np.loadtxt(control_scoring_path % subj)
     # n1 =1, n2 =2, n3 =3
     nrem = np.where(np.logical_and(scoring >= 1, scoring <= 3))
     nrem_epochs = []
     start = nrem[0][0]
     for i in range(len(nrem[0]) - 1):
-        if nrem[0][i + 1] - nrem[0][i] != 1:
+        if nrem[0][i + 1] - nrem[0][i] != 1 and start != nrem[0][i]:
             # each epoch is 30 sec
             nrem_epochs.append([start * 30, nrem[0][i] * 30])
             start = nrem[0][i + 1]
 
+    # in case the recording ends with nrem
+    if nrem[0][-1] == len(scoring) - 1:
+        nrem_epochs.append([start * 30, nrem[0][-1] * 30])
+
     return nrem_epochs
+
+
+def get_stim_count(subj):
+    stim = np.array(pd.read_csv(stim_path % (subj, subj), header=None).iloc[0, :])
+    return len(stim)
+
+# for choosing the most active channels
+def calc_nrem_rate_per_chan(subjects, control=False):
+    stim_val = {'before': 0, 'during': 1, 'after': 2}
+    for subj in subjects:
+        subj_files_list = glob.glob(f'results\\{subj}*split*' if not control else f'results\\control\\{subj}*split*')
+        rates_per_chan = {'channel': [], 'before': [], 'during': [], 'after': [], 'sum': [], 'duration_sec': [], 'total_mean': []}
+        for i, curr_file in enumerate(subj_files_list):
+            if 'stim' not in curr_file:
+                ch_name = curr_file.split(f'{subj}_')[1].split('_nrem')[0]
+                chan_rates = pd.read_csv(curr_file, index_col=0)
+                rates_per_chan['channel'].append(ch_name)
+                for i in stim_val.keys():
+                    curr_rates = chan_rates[chan_rates.is_stim == stim_val[i]]
+                    total_duration = curr_rates['duration_sec'].sum() / 60
+                    total_spikes = curr_rates['n_spikes'].sum()
+                    if total_duration == 0:
+                        rates_per_chan[i].append(None)
+                    else:
+                        rates_per_chan[i].append(total_spikes / total_duration)
+                rates_per_chan['sum'].append(int(chan_rates['n_spikes'].sum()))
+                rates_per_chan['duration_sec'].append(int(chan_rates['duration_sec'].sum()))
+                rates_per_chan['total_mean'].append(rates_per_chan['sum'][-1] / (rates_per_chan['duration_sec'][-1] / 60))
+
+        df = pd.DataFrame(rates_per_chan)
+        df.to_csv(f'results\\{subj}_nrem_chan_sum.csv')
 
 
 manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
@@ -159,3 +199,4 @@ manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', '
 # avg_block_size(all_subj)
 # plot_stim_duration(all_subj)
 # get_control_nrem_epochs()
+# calc_nrem_rate_per_chan(['396', '398', '402', '404', '405', '406', '415', '416'], control=False)

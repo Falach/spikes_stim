@@ -222,14 +222,22 @@ def fill_row(raw, rates, is_stim=0):
 
     return rates
 
-def detect_subj_chan(subj, channels):
+def detect_subj_chan(subj, channels, nrem_epochs):
     rates = {'n_spikes': [], 'duration_sec': [], 'rate': [], 'duration_20%': [], 'n_1_20%': [], 'n_2_20%': [],
              'n_3_20%': [], 'n_4_20%': [], 'n_5_20%': [], 'rate_1_20%': [], 'rate_2_20%': [], 'rate_3_20%': [],
              'rate_4_20%': [], 'rate_5_20%': [], 'is_stim': []}
-    nrem_epochs = get_control_nrem_epochs(subj)
-    # before stim = 30min, during stim = 60min, all the rest is after
-    stim_start = 30 * 60
-    stim_end = 90 * 60
+    # before stim = 30min after 30min of sleep (total 60), during stim = 90min, all the rest is after
+    for i, (start, end) in enumerate(nrem_epochs[:]):
+        if start < 30 * 60:
+            if end < 30 * 60:
+                nrem_epochs.remove([start, end])
+            else:
+                nrem_epochs[i] = [30 * 60, end]
+        else:
+            break
+
+    stim_start = nrem_epochs[0][0] + 30 * 60
+    stim_end = nrem_epochs[0][0] + 120 * 60
     raw = mne.io.read_raw_edf(control_path % subj).pick_channels(channels)
 
     # until first stim and during stim
@@ -242,7 +250,7 @@ def detect_subj_chan(subj, channels):
             rates = fill_row(raw.copy().crop(tmin=start, tmax=stim_start), rates, is_stim=0)
             # nrem epochs during the stim
             if end > stim_end:
-                rates = fill_row(raw.copy().crop(tmin=stim_start, tmax=stim_end), is_stim=1)
+                rates = fill_row(raw.copy().crop(tmin=stim_start, tmax=stim_end), rates, is_stim=1)
             else:
                 end2 = end
                 start2 = stim_start
@@ -267,9 +275,12 @@ def detect_subj_chan(subj, channels):
                 rates = fill_row(raw.copy().crop(tmin=start2, tmax=end2), rates, is_stim=1)
                 j += 1
                 start2, end2 = nrem_epochs[j]
-            rates = fill_row(raw.copy().crop(tmin=start2, tmax=stim_end), rates, is_stim=1)
-            # nrem epochs after the stim
-            rates = fill_row(raw.copy().crop(tmin=stim_end, tmax=end2), rates, is_stim=2)
+            if start2 < stim_end:
+                rates = fill_row(raw.copy().crop(tmin=start2, tmax=stim_end), rates, is_stim=1)
+                # nrem epochs after the stim
+                rates = fill_row(raw.copy().crop(tmin=stim_end, tmax=end2), rates, is_stim=2)
+            else:
+                rates = fill_row(raw.copy().crop(tmin=start2, tmax=end2), rates, is_stim=2)
             break
 
     # nrem epochs after the stim
@@ -283,24 +294,21 @@ def detect_subj_chan(subj, channels):
 
     return rates
 
-done = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '541', '545']
-subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '538', '545']
-manual_select = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
-                 '497': ['RPHG2', 'REC2', 'LAH1', 'LPHG3', 'RMH2', 'LEC1'], '498': ['REC2', 'RMH1', 'RA2', 'RPHG4'],
-                 '499': ['LMH5'], '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'], '515': ['RA1', 'RAH2'],
-                 '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
+
 control_chans = {'396': ['LAH1', 'LPHG2', 'LMH1', 'LEC1', 'LA2'], '398': ['LA1', 'LAH1', 'RAH1', 'RA2', 'REC3', 'LPHG1'],
-                 '402': ['LA1', 'RAH1', 'LAH1', 'RA2', 'REC1'], '406': ['LPHG2', 'RPHG1', 'RAH1', 'RA2', 'LAH1', 'RMPF3'],
-                 '415': ['LAH1', 'RA1', 'RAH1', 'LEC1', 'REC1'], '416': ['LAH2', 'RA2', 'RAH1', 'RIFGA1']}
+                 '402': ['LA1', 'RAH1', 'LAH1', 'RA2', 'REC1'], '404': ['LDAC5', 'RPSMA3', 'LDAC4', 'RAH1', 'LSMA6', 'LAH2'],
+                 '405': ['LAH2'], '406': ['LPHG2', 'RPHG1', 'RAH1', 'RA2', 'LAH1', 'RMPF3'], '415': ['LAH1', 'RA1', 'RAH1', 'LEC1', 'REC1'],
+                 '416': ['LAH2', 'RA2', 'RAH1', 'RIFGA1']}
 # for debug
 # subj = '485'
 # detect_subj_chan(subj, ['RPHG1', 'RPHG2'])
 
-for subj in ['398', '402','415']:
+for subj in ['404', '405', '406', '415', '416']:
     print(f'subj: {subj}')
     subj_raw = mne.io.read_raw_edf(control_path % subj)
     all_channels = get_control_clean_channels(subj, subj_raw)
     chans_bi = []
+    nrem_epochs = get_control_nrem_epochs(subj)
 
     # get the channels for bipolar reference
     for i, chan in enumerate(all_channels):
@@ -314,6 +322,6 @@ for subj in ['398', '402','415']:
 
     # run on each channel and detect the spikes between stims
     for chans in chans_bi:
-        if chans[0] in control_chans[subj] or chans[0].replace('SEEG ', '').replace('-REF1' if subj == '396' else '-REF', '') in control_chans[subj]:
-            rates = detect_subj_chan(subj, chans)
+        # if chans[0] in control_chans[subj] or chans[0].replace('SEEG ', '').replace('-REF1' if subj == '396' else '-REF', '') in control_chans[subj]:
+        rates = detect_subj_chan(subj, chans, nrem_epochs)
     print(1)

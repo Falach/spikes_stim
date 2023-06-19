@@ -241,6 +241,7 @@ def detect_subj_chan(subj, channels):
             # nrem epochs during the stim
             if end > stim_end:
                 rates = fill_row(remove_stim(subj, raw.copy().crop(tmin=stim_start, tmax=stim_end), stim_start, stim_end), rates, is_stim=1)
+                rates = fill_row(raw.copy().crop(tmin=stim_end, tmax=end), rates, is_stim=2)
             else:
                 end2 = end
                 start2 = stim_start
@@ -250,7 +251,8 @@ def detect_subj_chan(subj, channels):
                     rates = fill_row(remove_stim(subj, raw.copy().crop(tmin=start2, tmax=end2), start2, end2), rates, is_stim=1)
                     j += 1
                     start2, end2 = nrem_epochs[j]
-                rates = fill_row(remove_stim(subj, raw.copy().crop(tmin=start2, tmax=stim_end), start2, stim_end), rates, is_stim=1)
+                if start2 < stim_end:
+                    rates = fill_row(remove_stim(subj, raw.copy().crop(tmin=start2, tmax=stim_end), start2, stim_end), rates, is_stim=1)
                 # nrem epochs after the stim
                 rates = fill_row(raw.copy().crop(tmin=stim_end, tmax=end2), rates, is_stim=2)
             break
@@ -263,11 +265,12 @@ def detect_subj_chan(subj, channels):
                                  is_stim=1)
                 j += 1
                 start2, end2 = nrem_epochs[j]
-            rates = fill_row(remove_stim(subj, raw.copy().crop(tmin=start2, tmax=stim_end), start2, stim_end), rates,
-                             is_stim=1)
-            # nrem epochs after the stim
-            rates = fill_row(raw.copy().crop(tmin=stim_end, tmax=end2), rates, is_stim=2)
-            #TODO: handle 515 + 545
+            if start2 < stim_end:
+                rates = fill_row(raw.copy().crop(tmin=start2, tmax=stim_end), rates, is_stim=1)
+                # nrem epochs after the stim
+                rates = fill_row(raw.copy().crop(tmin=stim_end, tmax=end2), rates, is_stim=2)
+            else:
+                rates = fill_row(raw.copy().crop(tmin=start2, tmax=end2), rates, is_stim=2)
             break
 
     # nrem epochs after the stim
@@ -286,14 +289,19 @@ manual_select = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1
                  '497': ['RPHG2', 'REC2', 'LAH1', 'LPHG3', 'RMH2', 'LEC1'], '498': ['REC2', 'RMH1', 'RA2', 'RPHG4'],
                  '499': ['LMH5'], '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'], '515': ['RA1', 'RAH2'],
                  '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
-control_chans = {'396': ['LAH1', 'LPHG2', 'LMH1', 'LEC1', 'LA2'], '398': ['LA1', 'LAH1', 'RAH1', 'RA2', 'REC3', 'LPHG1'],
-                 '402': ['LA1', 'RAH1', 'LAH1', 'RA2', 'REC1'], '406': ['LPHG2', 'RPHG1', 'RAH1', 'RA2', 'LAH1', 'RMPF3'],
-                 '415': ['LAH1', 'RA1', 'RAH1', 'LEC1', 'REC1'], '416': ['LAH2', 'RA2', 'RAH1', 'RIFGA1']}
-# for debug
-# subj = '485'
-# detect_subj_chan(subj, ['RPHG1', 'RPHG2'])
 
-for subj in ['498']:
+manual_mesial = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '487': ['LAH2', 'LA2', 'LEC1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
+                 '497': ['RPHG2', 'REC2', 'LAH1', 'LPHG3', 'RMH2', 'LEC1'], '498': ['REC2', 'RMH1', 'RA2', 'RPHG1'],
+                 '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'], '515': ['RA1', 'RAH2'],
+                 '520': ['REC1', 'RMH1', 'LMH1'], '545': ['LAH3', 'REC1']}
+manual_lateral = {'485': ['RPHG6'], '486': ['RPSMA5'], '488': ['LA7'],
+                 '497': ['REC6', 'RPHG5', 'LAH6', 'LA5', 'LPHG5', 'RMH7'],
+                 '499': ['LMH5'], '505': ['LEC5']}
+# for debug
+# subj = '510-7'
+# detect_subj_chan(subj, ['RAH1', 'RAH2'])
+
+for subj in ['541', '545']:
     print(f'subj: {subj}')
     subj_raw = mne.io.read_raw_edf(edf_path % (subj, subj))
     all_channels = get_clean_channels(subj, subj_raw)
@@ -310,7 +318,7 @@ for subj in ['498']:
     # run on each channel and detect the spikes between stims
     for chans in chans_bi:
         # for manual selected channels
-        if chans[0] in manual_select[subj]:
+        # if chans[0] in manual_mesial[subj]:
             rates = detect_subj_chan(subj, chans)
             # plot_subj_chan(rates, chans)
     print(1)
