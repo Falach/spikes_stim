@@ -192,6 +192,36 @@ def calc_nrem_rate_per_chan(subjects, control=False):
         df.to_csv(f'results\\{subj}_nrem_chan_sum.csv')
 
 
+def sum_all_chans(subjects=['485'], path='results\\%s*split*'):
+    for subj in subjects:
+        subj_files_list = glob.glob(path % subj)
+        rates = {'n_spikes': [], 'duration_sec': [], 'is_stim': []}
+        for i, curr_file in enumerate(subj_files_list):
+            chan_rates = pd.read_csv(curr_file, index_col=0)
+            if i == 0:
+                rates['n_spikes'] = np.zeros(len(chan_rates))
+                rates['duration_sec'] = chan_rates['duration_sec'].tolist()
+                rates['is_stim'] = chan_rates['is_stim'].tolist()
+
+            rates['n_spikes'] += np.array(chan_rates['n_spikes'])
+
+
+        df = pd.DataFrame(rates)
+        df['rate'] = df['n_spikes'] / (df['duration_sec'] / 60)
+        df.to_csv(f'results\\{subj}_nrem_all_sum.csv')
+
+def get_top_chans(path, chan_num=5):
+    df = pd.read_csv(path)
+    top_chans = df.sort_values(by='before', ascending=False)['channel'].tolist()
+    chans = []
+    i = 0
+    while len(chans) < chan_num and i < len(top_chans):
+        if top_chans[i][:-1] not in [x[:-1] for x in chans]:
+            chans.append(top_chans[i])
+        i += 1
+
+    return chans
+
 manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
                  '497': ['RPHG2', 'REC2', 'LAH1', 'LPHG3', 'RMH2', 'LEC1'], '498': ['REC2', 'RMH1', 'RA2', 'RPHG4'],
                  '499': ['LMH5'], '505': ['LEC1', 'LA2', 'LAH3'], '510-7': ['RAH1'],
@@ -200,3 +230,5 @@ manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', '
 # plot_stim_duration(all_subj)
 # get_control_nrem_epochs()
 # calc_nrem_rate_per_chan(['396', '398', '402', '404', '405', '406', '415', '416'], control=False)
+# sum_all_chans(['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '520', '538', '541', '544'])
+# sum_all_chans([x for x in all_control if x != '405'])

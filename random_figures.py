@@ -213,7 +213,7 @@ def plot_before_stim_duration(subjects):
     plt.show()
 
 
-def channels_scatter(subjects=['485']):
+def channels_scatter(subjects=['485'], colored_chans=['MH', 'AH', 'A', 'EC', 'PHG']):
     for subj in subjects:
         rates_per_chan = {}
         subj_files_list = glob.glob(f'results\\{subj}*split*')
@@ -227,18 +227,20 @@ def channels_scatter(subjects=['485']):
                 total_spikes = curr_rates['n_spikes'].sum()
                 # if total_duration == 0:
                 curr_chan.append(total_spikes / total_duration)
-            # normalize by max
+            # normalize
             baseline = curr_chan[0] if curr_chan[0] is not None else curr_chan[1]
             norm_chan = [np.nan if x is None else (x - baseline) / max(x, baseline) for x in curr_chan]
             rates_per_chan[ch_name] = [curr_chan[0], norm_chan[1]]
-        plt.scatter([x[1] for x in rates_per_chan.values()], [x[0] for x in rates_per_chan.values()])
+
+            plt.scatter(norm_chan[1], curr_chan[0], color='tab:blue' if ch_name[1:-1] in colored_chans and int(ch_name[-1]) <=3 else 'tab:orange', s=14)
+        # plt.scatter([x[1] for x in rates_per_chan.values()], [x[0] for x in rates_per_chan.values()])
         plt.xlim([1, -1])  # maybe increase range?
         plt.axhline(y=2, color='r', linestyle='dashed')
         plt.axvline(x=0, color='b', linestyle='dashed')
         plt.xlabel('% spike rate reduction')
         plt.ylabel('channel baseline rate')
         plt.title(f'{subj} channels')
-        plt.savefig(f'results\\{subj}_channels_scatter.png')
+        plt.savefig(f'results\\{subj}_channels_scatter_MTL.png')
         plt.clf()
 
 manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', 'RAH1', 'RPHG1'],
@@ -250,4 +252,4 @@ manual_select_14_thresh = {'485': ['RMH1', 'RPHG1', 'RBAA1'], '489': ['LPHG2', '
 # get_nrem_epochs()
 # sleep_scoring(subjects=all_subj)
 # plot_before_stim_duration(all_subj)
-channels_scatter(['541', '544'])
+channels_scatter(all_subj)
