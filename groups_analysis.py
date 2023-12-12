@@ -3,6 +3,7 @@ import pandas as pd
 import utils
 import mne
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 # NUM_OF_FEATURES = 7
 # TIMESTAMP_INDEX = 0
@@ -37,19 +38,24 @@ import matplotlib.pyplot as plt
 
 subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '520', '538',
             '541', '544', '545']
-controls = ['396', '406']
+controls = ['396', '398', '402', '406']
 stim_side_right = ['485', '487', '489', '490', '496', '497', '510-1', '510-7', '515', '520', '538', '544', '545',
                        '396', '398', '404', '406', '415']
-spikes_path = r'C:\repos\NirsLabProject\NirsLabProject\data\products\p%s\bipolar_model\features\flat_features.npy'
-groups_path = r'C:\repos\NirsLabProject\NirsLabProject\data\products\p%s\bipolar_model\features\groups.npy'
+# spikes_path = r'C:\repos\NirsLabProject\NirsLabProject\data\products\p%s\bipolar_model\features\flat_features.npy'
+# groups_path = r'C:\repos\NirsLabProject\NirsLabProject\data\products\p%s\bipolar_model\features\groups.npy'
+spikes_path = r'D:\Ofer_backup\p%s\bipolar_model\features\flat_features.npy'
+groups_path = r'D:\Ofer_backup\p%s\bipolar_model\features\groups.npy'
 columns = ['index', 'size', 'timestamp', 'last_event_timestamp', 'focal_channel_name', 'hemispheres', 'structures',
            'deepest_electrode', 'shallowest_electrode', 'group_spatial_spread', 'amplitude', 'duration',
            'group_duration', 'stimuli', 'hypnogram', 'subject']
-frontal_chans = [f"{string}{number}" for string in ['ROF', 'LOF', 'RAC', 'LAC'] for number in range(1, 9)]
+frontal_chans = [f"{string}{number}" for string in ['ROF', 'LOF', 'RAC', 'LAC', 'LAF', 'RAF', 'RFA', 'RIF-dAC', 'LOPR'] for number in range(1, 9)]
 temporal_chans = [f"{string}{number}" for string in ['RA', 'LA', 'RAH', 'LAH', 'RMH', 'LMH', 'REC', 'LEC', 'RPHG', 'LPHG'] for number in range(1, 9)]
 for_avg_rates = {'all': [], 'ipsi': [], 'contra': [], 'frontal': [], 'temporal': []}
+for_avg_props = {'amp': [], 'size': [], 'duration': [], 'spread': []}
+plot_rates = True
+scaler = StandardScaler()
 for subj in [x for x in subjects if x not in ['515', '541', '545']]:
-# for subj in ['510-7']:
+# for subj in ['541']:
     stim_side = 'R' if subj in stim_side_right else 'L'
     group_features = np.load(groups_path % subj, allow_pickle=True)
     group_features_df = pd.DataFrame(list(group_features))
@@ -82,6 +88,10 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
              'contra': [len(baseline[baseline['focal_channel_name'].str[0] != stim_side]) / baseline_minutes],
              'frontal': [len(baseline[baseline['focal_channel_name'].isin(frontal_chans)]) / baseline_minutes],
              'temporal': [len(baseline[baseline['focal_channel_name'].isin(temporal_chans)]) / baseline_minutes]}
+    props = {'amp': [np.mean(baseline['amplitude'])],
+             'size': [np.mean(baseline['size'])],
+             'duration': [np.mean(baseline['duration'])],
+             'spread': [np.mean(baseline['group_spatial_spread'])]}
     n_chans = {'all': final_features['focal_channel_name'].nunique(),
                'ipsi': final_features[final_features['focal_channel_name'].str[0] == stim_side]['focal_channel_name'].nunique(),
                'contra': final_features[final_features['focal_channel_name'].str[0] != stim_side]['focal_channel_name'].nunique(),
@@ -97,6 +107,10 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
         rates['contra'].append(len(stim_block[stim_block['focal_channel_name'].str[0] != stim_side]) / stim_minutes)
         rates['frontal'].append(len(stim_block[stim_block['focal_channel_name'].isin(frontal_chans)]) / stim_minutes)
         rates['temporal'].append(len(stim_block[stim_block['focal_channel_name'].isin(temporal_chans)]) / stim_minutes)
+        props['amp'].append(np.mean(stim_block['amplitude']))
+        props['size'].append(np.mean(stim_block['size']))
+        props['duration'].append(np.mean(stim_block['duration']))
+        props['spread'].append(np.mean(stim_block['group_spatial_spread']))
         if i + 1 < len(stim_epochs):
             pause_block = final_features[(final_features['timestamp'] > end * 1000) & (final_features['timestamp'] < stim_epochs[i + 1][0] * 1000)]
             pause_minutes = (stim_epochs[i + 1][0] - end) / 60
@@ -107,6 +121,10 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
                 len(pause_block[pause_block['focal_channel_name'].isin(frontal_chans)]) / stim_minutes)
             rates['temporal'].append(
                 len(pause_block[pause_block['focal_channel_name'].isin(temporal_chans)]) / stim_minutes)
+            props['amp'].append(np.mean(pause_block['amplitude']))
+            props['size'].append(np.mean(pause_block['size']))
+            props['duration'].append(np.mean(pause_block['duration']))
+            props['spread'].append(np.mean(pause_block['group_spatial_spread']))
         else:
             # for now using only 5 minutes after last stimuli
             after = final_features[(final_features['timestamp'] > end * 1000) & (final_features['timestamp'] < (end + 60 * 5) * 1000)]
@@ -115,14 +133,26 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
             rates['contra'].append(len(after[after['focal_channel_name'].str[0] != stim_side]) / 5)
             rates['frontal'].append(len(after[after['focal_channel_name'].isin(frontal_chans)]) / stim_minutes)
             rates['temporal'].append(len(after[after['focal_channel_name'].isin(temporal_chans)]) / stim_minutes)
+            props['amp'].append(np.mean(after['amplitude']))
+            props['size'].append(np.mean(after['size']))
+            props['duration'].append(np.mean(after['duration']))
+            props['spread'].append(np.mean(after['group_spatial_spread']))
 
 # plot the spike rate in each epoch here
-    # for (curr_rates, legend) in zip((rates, rates_ipsi, rates_contra), ('all', 'ipsi', 'contra')):
-    for (legend, curr_rates) in rates.items():
-        norm = [(x-curr_rates[0]) / max(x, curr_rates[0]) for x in curr_rates]
-        for_avg_rates[legend].append(norm)
-        plt.plot(norm, '-o', label=legend + ' ' + str(n_chans[legend]))
-    plt.axhline(y=0, color='red', linestyle='dashed')
+    if plot_rates:
+        # for (curr_rates, legend) in zip((rates, rates_ipsi, rates_contra), ('all', 'ipsi', 'contra')):
+        for (legend, curr_rates) in rates.items():
+            norm = scaler.fit_transform(np.array(curr_rates).reshape(-1,1)).flatten()
+            # norm = [(x - curr_rates[0]) / max(x, curr_rates[0]) for x in curr_rates]
+            for_avg_rates[legend].append(norm)
+            plt.plot(norm, '-o', label=legend + ' ' + str(n_chans[legend]))
+    else:
+        for (legend, curr_rates) in props.items():
+            # norm = [(x - curr_rates[0]) / max(x, curr_rates[0]) for x in curr_rates]
+            norm = scaler.fit_transform(np.array(curr_rates).reshape(-1,1)).flatten()
+            for_avg_props[legend].append(norm)
+            plt.plot(norm, '-o', label=legend)
+    # plt.axhline(y=0, color='red', linestyle='dashed')
     for i in range(0, len(rates['all']) - 1, 2):
         plt.axvspan(i, i + 1, facecolor='silver', alpha=0.5)
     sleep_percent = pd.read_csv(f'results/{subj}_sleep_percent.csv')
@@ -130,38 +160,41 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
         plt.text(k - 0.7, plt.ylim()[1] -0.05, str(int(j)), size=8)
     plt.title(f'{subj} - groups profile')
     plt.xlabel('Time point')
-    plt.ylabel('Spikes per minute')
-    plt.legend(loc='lower left')
+    plt.ylabel('z-score')
+    plt.legend(fontsize='small')
     plt.xlim(0, len(rates['all']) - 1)
     plt.tight_layout()
-    # plt.savefig(f'results/groups/{subj}_groups_rate.png')
+    # plt.savefig(f'results/groups/{subj}_groups_rates_z.png')
     plt.clf()
 
-max_len = max(map(len, for_avg_rates['all']))
-# plot the avg rate in each epoch here
-for (legend, curr_rates) in for_avg_rates.items():
-    padded_lists = np.array([lst + [np.nan] * (max_len - len(lst)) for lst in curr_rates])
-    avg_rates = np.nanmean(padded_lists, axis=0)
-    std_rates = np.nanstd(padded_lists, axis=0)
-    plt.plot(avg_rates, '-o', label=legend)
-    plt.fill_between(range(len(avg_rates)), avg_rates - std_rates, avg_rates + std_rates, alpha=0.2)
-
-plt.axhline(y=0, color='red', linestyle='dashed')
+if plot_rates:
+    max_len = max(map(len, for_avg_rates['all']))
+    # plot the avg rate in each epoch here
+    for (legend, curr_rates) in for_avg_rates.items():
+        padded_lists = np.array([list(lst) + [np.nan] * (max_len - len(lst)) for lst in curr_rates])
+        avg_rates = np.nanmean(padded_lists, axis=0)
+        std_rates = np.nanstd(padded_lists, axis=0)
+        plt.plot(avg_rates, '-o', label=legend)
+        # plt.fill_between(range(len(avg_rates)), avg_rates - std_rates, avg_rates + std_rates, alpha=0.2)
+else:
+    max_len = max(map(len, for_avg_props['amp']))
+    for (legend, curr_rates) in for_avg_props.items():
+        padded_lists = np.array([list(lst) + [np.nan] * (max_len - len(lst)) for lst in curr_rates])
+        avg_rates = np.nanmean(padded_lists, axis=0)
+        std_rates = np.nanstd(padded_lists, axis=0)
+        plt.plot(avg_rates, '-o', label=legend)
+        # plt.fill_between(range(len(avg_rates)), avg_rates - std_rates, avg_rates + std_rates, alpha=0.2)
+# plt.axhline(y=0, color='red', linestyle='dashed')
 for i in range(0, max_len - 1, 2):
     plt.axvspan(i, i + 1, facecolor='silver', alpha=0.5)
 plt.title(f'All subjects groups profile')
 plt.xlabel('Time point')
-plt.ylabel('Spikes per minute')
+plt.ylabel('z-score')
 plt.legend(loc='lower left')
 plt.xlim(0, max_len - 1)
 plt.tight_layout()
-plt.savefig(f'results/groups/all_groups_rate.png')
+plt.savefig(f'results/groups/all_groups_rates_z.png')
 print(1)
-
-
-
-
-# TODO: plot the spread in each group here
 
 
 
