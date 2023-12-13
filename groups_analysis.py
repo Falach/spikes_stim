@@ -16,9 +16,10 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '499', '505', '510-1', '510-7', '515', '520', '538',
             '541', '544', '545']
-controls = ['396', '398', '402', '406']
 stim_side_right = ['485', '487', '489', '490', '496', '497', '510-1', '510-7', '515', '520', '538', '544', '545',
                        '396', '398', '404', '406', '415']
+controls = ['396', '398', '406', '415', '416']
+control_stim = {'396': '485', '398': '486', '406': '488', '415': '489', '416': '496'}
 spikes_path = r'D:\Ofer_backup\p%s\bipolar_model\features\flat_features.npy'
 groups_path = r'D:\Ofer_backup\p%s\bipolar_model\features\groups.npy'
 columns = ['index', 'size', 'timestamp', 'last_event_timestamp', 'focal_channel_name', 'hemispheres', 'structures',
@@ -28,7 +29,8 @@ columns = ['index', 'size', 'timestamp', 'last_event_timestamp', 'focal_channel_
 frontal_chans = [f"{string}{number}" for string in ['ROF', 'LOF', 'RAC', 'LAC', 'LAF', 'RAF', 'RFA', 'RIF-dAC', 'LOPR'] for number in range(1, 9)]
 temporal_chans = [f"{string}{number}" for string in ['RA', 'LA', 'RAH', 'LAH', 'RMH', 'LMH', 'REC', 'LEC', 'RPHG', 'LPHG'] for number in range(1, 9)]
 for_avg_props = {}
-plot_rates = True
+curr_run_subjects = controls
+is_control = True
 scaler = StandardScaler()
 
 def get_subj_data(subj):
@@ -43,9 +45,10 @@ def get_subj_data(subj):
     merged_df = pd.merge(group_features_df, spikes_features_df, how='inner', left_on=['index'], right_on=['group'])
     unique_indices = np.unique(merged_df['group'], return_index=True)[1]
     clean_df = merged_df.loc[unique_indices, columns]
-    final_features = clean_df[~clean_df['focal_channel_name'].isin(utils.get_noisy_channels(subj, True))]
-
-    return final_features
+    if is_control:
+        return clean_df
+    else:
+        return clean_df[~clean_df['focal_channel_name'].isin(utils.get_noisy_channels(subj, True))]
 
 def init_dicts_with_baseline_rates(subj_features, nrem_start, stim_start, side):
     # take epochs after sleep onset but before first stimuli as baseline
@@ -104,7 +107,8 @@ def plot_layout(subj, prop_len, prop_name, base_relative=True, to_save=True):
         plt.axhline(y=0, color='red', linestyle='dashed')
     for i in range(0, prop_len - 1, 2):
         plt.axvspan(i, i + 1, facecolor='silver', alpha=0.5)
-    if subj != 'all':
+    #TODO: handle control sleep percent
+    if subj != 'all' and not is_control:
         sleep_percent = pd.read_csv(f'results/{subj}_sleep_percent.csv')
         for k, j in enumerate(sleep_percent['sleep_percent']):
             plt.text(k - 0.7, plt.ylim()[1] -0.05, str(int(j)), size=8)
@@ -120,11 +124,20 @@ def plot_layout(subj, prop_len, prop_name, base_relative=True, to_save=True):
         plt.savefig(f'results/groups/{title}.png')
     plt.clf()
 
-for subj in [x for x in subjects if x not in ['515', '541', '545']]:
+# for subj in [x for x in subjects if x not in ['515', '541', '545']]:
 # for subj in ['541']:
+for subj in curr_run_subjects:
     stim_side = 'R' if subj in stim_side_right else 'L'
     final_features = get_subj_data(subj)
-    nrem_epochs, nrem_stim_epochs, stim_epochs = utils.get_nrem_epochs(subj)
+    if is_control:
+        nrem_epochs = utils.get_control_nrem_epochs(subj)
+        # remove first 30 minutes for control (like we started recording 30 min after sleep onset)
+        final_features = final_features[(final_features['timestamp'] > (nrem_epochs[0][0] + 30*60) * 1000)]
+        # initiate all data to new time zero for stimuli timings
+        final_features['timestamp'] = final_features['timestamp'] - ((nrem_epochs[0][0] + 30*60) * 1000)
+        nrem_epochs_unreal, nrem_stim_epochs, stim_epochs = utils.get_nrem_epochs(control_stim[subj])
+    else:
+        nrem_epochs, nrem_stim_epochs, stim_epochs = utils.get_nrem_epochs(subj)
     props, n_chans = init_dicts_with_baseline_rates(final_features, nrem_epochs[0][0], stim_epochs[0][0], stim_side)
 
     for i, (start, end) in enumerate(stim_epochs):
@@ -141,7 +154,6 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
             append_to_props(props, after, stim_side, 5)
 
 # plot the spike rate in each epoch here
-#     if plot_rates:
     for prop in props.keys():
         if prop not in for_avg_props.keys():
             for_avg_props[prop] = {legend: [] for legend in props[prop].keys()}
@@ -154,6 +166,7 @@ for subj in [x for x in subjects if x not in ['515', '541', '545']]:
 
 
 max_len = max(map(len, for_avg_props['rates']['all']))
+avg_title = 'control' if is_control else 'all'
 # plot the avg rate in each epoch here
 for prop in for_avg_props.keys():
     for (legend, curr_rates) in for_avg_props[prop].items():
@@ -162,6 +175,6 @@ for prop in for_avg_props.keys():
         std_rates = np.nanstd(padded_lists, axis=0)
         plt.plot(avg_rates, '-o', label=legend)
         # plt.fill_between(range(len(avg_rates)), avg_rates - std_rates, avg_rates + std_rates, alpha=0.2)
-    plot_layout('all', max_len, prop, False, True)
+    plot_layout(avg_title, max_len, prop, False, True)
 
 print(1)
